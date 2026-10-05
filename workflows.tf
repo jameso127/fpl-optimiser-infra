@@ -8,12 +8,13 @@ resource "google_workflows_workflow" "pipeline" {
   user_env_vars = {
     DEADLINE_WINDOW_HOURS = tostring(var.deadline_window_hours)
     PIPELINE_JOBS         = jsonencode(local.pipeline_order)
+    DRY_RUN_JOBS          = jsonencode(local.dry_run_order)
   }
 
   source_contents = file("${path.module}/workflows/pipeline.yaml")
 
   depends_on = [
     google_project_service.api,
-    google_cloud_run_v2_job_iam_member.workflow_runs_pipeline_jobs,
+    google_cloud_run_v2_job_iam_member.workflow_runs_jobs,
   ]
 }

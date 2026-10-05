@@ -25,15 +25,15 @@ locals {
     fpl-notify = { RESEND_API_KEY = google_secret_manager_secret.resend.secret_id }
   }
 
-  # The per-gameweek pipeline, in order. fpl-train runs on its own schedule instead.
+  # The per-gameweek pipeline, in order. fpl-train runs on its own schedule instead; a dry run
+  # (smoke test) also runs it, so predict has a model to serve in the dry-run data directory.
   pipeline_order = ["fpl-ingest", "fpl-predict", "fpl-optimise", "fpl-notify"]
-  pipeline_jobs  = { for name in local.pipeline_order : name => local.jobs[name] }
+  dry_run_order  = ["fpl-ingest", "fpl-train", "fpl-predict", "fpl-optimise", "fpl-notify"]
 
   common_env = {
     GCP_PROJECT_ID = var.project_id
     GCP_REGION     = var.region
     DATA_BUCKET    = google_storage_bucket.data.name
-    XPTS_SOURCE    = var.xpts_source
     LOG_LEVEL      = "INFO"
   }
 }

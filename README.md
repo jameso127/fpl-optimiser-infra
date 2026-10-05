@@ -87,6 +87,21 @@ This copies `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SA
 them by hand from `terraform output github_actions_variables`). The backend's `deploy.yml`
 then deploys with `google-github-actions/auth` using the provider and service account.
 
+## Seed the data and train once
+
+`fpl-train` needs past seasons' data in the bucket, and `fpl-predict` needs a promoted model,
+so after the first deploy:
+```
+# 1. Import the past seasons locally (backend repo), then copy the Parquet into the bucket
+uv run python -m ingest.history
+gcloud storage cp --recursive ./data/season=* gs://<data-bucket>/
+# 2. Run ingest for the current season, then train once
+gcloud run jobs execute fpl-ingest --region=<region> --wait
+gcloud run jobs execute fpl-train  --region=<region> --wait
+```
+Uploading data is not a deploy, so `CLAUDE.md`'s no-local-deploys rule does not apply, but it
+needs your credentials; do it yourself. After that, `fpl-train-weekly` keeps the model fresh.
+
 ## Secrets
 
 Terraform creates the secret *container* and a placeholder first version (so the notify job
@@ -102,7 +117,8 @@ Static validation (`terraform validate`) passes, but these only show up against 
 After the first `apply`:
 
 1. **Workflow smoke test**: `gcloud workflows run fpl-pipeline --location=<region> --data='{"dry_run": true}'`.
-   Succeeds with the placeholder images. If it fails with a permission error on the jobs,
+   Runs ingest, train, predict, optimise and notify in fixture mode. With the placeholder images
+   it just succeeds; with the real images it exercises the whole chain on fixture data. If it fails with a permission error on the jobs,
    or on polling operations, the `fpl-workflow` roles in `iam.tf` need adjusting
    (`run.developer` per job is for `jobs.run` with overrides; `run.viewer` at project level is
    for the operation it waits on).
@@ -122,7 +138,8 @@ After the first `apply`:
   if it passes its gate; otherwise the serving model is unchanged.
 - The data bucket holds snapshots that cannot be recreated (FPL's pre-deadline `ep_next`), so
   versioning is on and `force_destroy` is off. Cloud Run `deletion_protection` is on by default.
-- `xpts_source` (`model` or `ep_next`) is passed to the jobs as `XPTS_SOURCE`.
+- Expected points always come from the model. `fpl-predict` fails with a clear message until
+  `fpl-train` has registered and promoted a model, so seed the data and train once (below).
 
 ## Not here yet
 

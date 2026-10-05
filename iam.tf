@@ -37,9 +37,10 @@ resource "google_storage_bucket_iam_member" "runtime_data" {
 
 # --- workflow: run the pipeline jobs ------------------------------------------------------
 # Running a job with env overrides (DRY_RUN) needs run.jobs.runWithOverrides, which sits in
-# roles/run.developer, so it is granted per job rather than on the project.
-resource "google_cloud_run_v2_job_iam_member" "workflow_runs_pipeline_jobs" {
-  for_each = local.pipeline_jobs
+# roles/run.developer, so it is granted per job rather than on the project. fpl-train is
+# included because a dry-run smoke test runs it; the weekly real run is started by Scheduler.
+resource "google_cloud_run_v2_job_iam_member" "workflow_runs_jobs" {
+  for_each = local.jobs
 
   project  = var.project_id
   location = var.region

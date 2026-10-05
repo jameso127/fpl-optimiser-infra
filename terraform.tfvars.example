@@ -7,5 +7,4 @@ github_repository = "your-github-user/fpl-optimiser-backend"
 # Optional
 # billing_account_id = "XXXXXX-XXXXXX-XXXXXX"   # creates a 2 GBP/month budget with alerts
 # frontend_origin    = "https://your-frontend.example"
-# xpts_source        = "model"                    # or "ep_next"
 # enable_odds_secret = false

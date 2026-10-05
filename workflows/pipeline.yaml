@@ -9,7 +9,9 @@
 #   gcloud workflows run fpl-pipeline --location=<region> --data='{"force": true}'
 #
 # `dry_run` runs every job with DRY_RUN=true (fixture data, no email) and skips the deadline
-# check, so it doubles as the deployment smoke test.
+# check, so it doubles as the deployment smoke test. A dry run uses its own empty data
+# directory and `predict` never trains, so the dry-run job list also includes fpl-train,
+# which registers a throwaway model there for predict to serve.
 
 main:
   params: [args]
@@ -22,7 +24,7 @@ main:
           - dry_run: ${default(map.get(args, "dry_run"), false)}
           - force: ${default(map.get(args, "force"), false)}
           - hours_until: -1
-          - jobs: ${json.decode(sys.get_env("PIPELINE_JOBS"))}
+          - jobs: ${if(dry_run, json.decode(sys.get_env("DRY_RUN_JOBS")), json.decode(sys.get_env("PIPELINE_JOBS")))}
 
     - skip_deadline_check:
         switch:

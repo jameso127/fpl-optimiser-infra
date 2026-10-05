@@ -38,17 +38,6 @@ variable "image_keep_count" {
   default     = 5
 }
 
-variable "xpts_source" {
-  description = "Expected-points source for the predict job: model or ep_next."
-  type        = string
-  default     = "model"
-
-  validation {
-    condition     = contains(["model", "ep_next"], var.xpts_source)
-    error_message = "xpts_source must be \"model\" or \"ep_next\"."
-  }
-}
-
 variable "frontend_origin" {
   description = "Origin allowed by the API's CORS policy (the web app's URL). Empty until the frontend exists."
   type        = string
