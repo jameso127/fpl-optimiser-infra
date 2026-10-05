@@ -41,7 +41,12 @@ variable "image_keep_count" {
 variable "firestore_database" {
   description = "Name of the Firestore database for users. A named one keeps this app apart from the project's (default) database."
   type        = string
-  default     = "fpl"
+  default     = "fpl-users"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{2,61}[a-z0-9]$", var.firestore_database))
+    error_message = "A Firestore database id is 4-63 characters: lowercase letters, digits and hyphens, starting with a letter."
+  }
 }
 
 variable "users_backend" {
