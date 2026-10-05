@@ -34,8 +34,6 @@ locals {
       LOG_LEVEL      = "INFO"
       USERS_BACKEND  = var.users_backend
     },
-    var.fpl_team_id == null ? {} : { FPL_TEAM_ID = tostring(var.fpl_team_id) },
-    var.telegram_chat_id == null ? {} : { TELEGRAM_CHAT_ID = tostring(var.telegram_chat_id) },
   )
 }
 

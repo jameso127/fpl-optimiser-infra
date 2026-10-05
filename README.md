@@ -55,24 +55,24 @@ Rough monthly estimate for this usage (verify with the pricing calculator; price
 Expect well under £2. The budget alerts at 50%, 90% and 100% (and on forecast) if that changes.
 A budget alerts; it does not stop spending.
 
-## Bootstrap (once, by hand)
+## Terraform in CI
 
-1. Create a GCP project, link billing, and `gcloud auth application-default login` as a user
-   who can create these resources.
-2. Create the Terraform state bucket (this is the only thing created outside Terraform, so the
-   state has somewhere to live):
-   ```
-   gcloud storage buckets create gs://<state-bucket> --location=<region> \
-     --uniform-bucket-level-access --public-access-prevention
-   gcloud storage buckets update gs://<state-bucket> --versioning
-   ```
-3. `cp terraform.tfvars.example terraform.tfvars` and fill in `project_id` and
-   `github_repository` (and optionally `billing_account_id`).
-4. ```
-   terraform init -backend-config="bucket=<state-bucket>"
-   terraform plan -out tfplan      # read it
-   terraform apply tfplan          # a human applies; nothing here applies automatically
-   ```
+One pipeline, `.github/workflows/terraform.yml`, with three stages:
+
+| Stage | Pull request | Merge to `main` |
+|---|---|---|
+| validate | `fmt` and `validate`, no credentials | same |
+| plan | read-only preview, posted as a comment | full plan, shown in the run summary |
+| apply | not run | waits for you to approve the `production` environment, then applies that exact plan |
+
+No keys anywhere: GitHub proves who it is with a short-lived token, and Google only accepts
+this repo. The plan account can read but not change anything. The apply account can create
+resources and only `main` can use it; it is effectively project admin because it manages IAM,
+which is why it sits behind your approval and why the accounts are created by hand, outside
+this Terraform, so the pipeline cannot widen its own access (see [docs/bootstrap.md](docs/bootstrap.md),
+which also has the one-off setup). A dedicated project would limit the blast radius further.
+
+Run `terraform plan` locally whenever you like; only the pipeline applies.
 
 ## Connect the backend repo
 
@@ -153,6 +153,21 @@ with a TTL policy, so the database deletes stale data itself. Notes:
 - Nothing connects to Firestore from a client: Telegram talks to our service, and our service
   talks to Firestore as `fpl-runtime`, so there are no security rules to maintain.
 - The backend's contract tests run against the Firestore emulator in CI.
+
+### Adding yourself (until the bot can register people)
+
+Nobody's ids live in Terraform or GitHub. Users are documents in Firestore. In the Google Cloud
+console go to Firestore > Data > Start collection `users`, with document id = your Telegram chat
+id, and these fields:
+
+| Field | Type | Value |
+|---|---|---|
+| `chat_id` | number | your Telegram chat id |
+| `fpl_team_id` | number | your FPL team id |
+| `active` | boolean | `true` |
+
+The jobs pick it up on the next run. The bot's `/start` will replace this step. To pause
+yourself, set `active` to `false`.
 
 ## Not here yet
 
