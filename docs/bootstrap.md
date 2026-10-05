@@ -98,9 +98,3 @@ allow deployment from the `main` branch only.
 
 **Branch protection** on `main`: require a pull request and the `terraform / validate` and
 `terraform / plan` checks.
-
-## Before the first apply
-
-A project has one `(default)` Firestore database. Check there is none yet:
-`gcloud firestore databases list --project <project>`. If there is, say so before applying,
-because this Terraform creates it.

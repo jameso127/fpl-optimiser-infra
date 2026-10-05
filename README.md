@@ -26,7 +26,7 @@ GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
 | Orchestration | Workflow `fpl-pipeline` (reads `schedule.json`, waits until send time on deadline days, runs the four jobs); Scheduler `fpl-pipeline-daily` and `fpl-train-weekly`. |
 | Storage | Bucket `<project>-fpl-data` (versioned, 30-day cleanup of old versions, public access blocked); Artifact Registry repo `fpl` (keeps the newest 5 versions of each image). |
 | Identity | Service accounts `fpl-runtime`, `fpl-workflow`, `fpl-scheduler`, `fpl-deployer`; Workload Identity Federation pool for GitHub (no keys). |
-| Users | Firestore (Native mode, `(default)` database) for the bot's users, with TTL policies that expire declared transfers and invites automatically. |
+| Users | Firestore (Native mode, a named database, `fpl` by default) for the bot's users, with TTL policies that expire declared transfers and invites automatically. |
 | Secrets | Secret container `telegram-bot-token`. The value is added by hand. |
 | Guardrail | Optional monthly budget with 50/90/100% and forecast alerts. |
 
@@ -146,8 +146,9 @@ One database holds `users/{chat_id}` (with a `declared` subcollection of transfe
 says they have made) and `invites/{code}`. Both `declared` and `invites` carry an `expires_at`
 with a TTL policy, so the database deletes stale data itself. Notes:
 
-- The database location is permanent (set from `region`) and a project has one `(default)`
-  database. Delete protection is on.
+- It is a named database (`firestore_database`, default `fpl`), so it does not touch any
+  `(default)` database the project already has. The location is permanent (set from `region`)
+  and delete protection is on.
 - TTL deletion is not instant (usually within a day), so the application also checks
   `expires_at`.
 - Nothing connects to Firestore from a client: Telegram talks to our service, and our service
