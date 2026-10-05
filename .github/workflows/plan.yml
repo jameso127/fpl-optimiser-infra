@@ -1,44 +1,72 @@
 name: plan
 
+# Previews the plan on a pull request and posts it as a comment, so changes are read before
+# merging. Read-only: the account used can read the project but never change it. The apply
+# happens after merge, in apply.yml, behind an approval.
+#
+# It runs with -refresh=false, so it compares your code with the recorded state without asking
+# Google about the live resources. The plan in the apply run is the full one.
+#
+# Needs these repository variables (none are secret; scripts/bootstrap-ci.sh prints them):
+#   GCP_WIF_PROVIDER, GCP_PLANNER_SA, TF_STATE_BUCKET,
+#   PROJECT_ID, REGION, BACKEND_REPOSITORY, FPL_TEAM_ID, TELEGRAM_CHAT_ID
+
 on:
   pull_request:
     paths:
       - "**.tf"
+      - "workflows/**"
       - ".github/workflows/plan.yml"
 
 permissions:
   contents: read
-  id-token: write
-  pull-requests: write
+  id-token: write # exchange the GitHub token for short-lived Google credentials
+  pull-requests: write # to post the comment
+
+concurrency:
+  group: plan-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   plan:
+    # Pull requests from forks get no token, so only run for branches of this repo.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_project_id: ${{ vars.PROJECT_ID }}
+      TF_VAR_region: ${{ vars.REGION }}
+      TF_VAR_github_repository: ${{ vars.BACKEND_REPOSITORY }}
+      TF_VAR_fpl_team_id: ${{ vars.FPL_TEAM_ID }}
+      TF_VAR_telegram_chat_id: ${{ vars.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_PLANNER_SA }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_PLANNER_SA }}
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.8"
-      - run: terraform fmt -check -recursive
-      - run: terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" -backend-config="prefix=fpl-optimiser"
-      - run: terraform validate
-      - run: terraform plan -lock=false -out=tfplan
-      - run: terraform show -json tfplan > tfplan.json
-      - uses: actions/github-script@v7
+          terraform_version: "~> 1.9"
+          terraform_wrapper: false
+      - name: Init
+        run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+      - name: Plan
+        run: terraform plan -input=false -lock=false -refresh=false -no-color > plan.txt
+      - name: Comment the plan on the pull request
+        uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const plan = JSON.parse(fs.readFileSync('tfplan.json', 'utf8'));
-            const changes = plan.resource_changes?.length || 0;
-            const summary = `## Terraform Plan\n\n**Resources:** ${changes} to change`;
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: summary
-            });
+            const marker = '<!-- terraform-plan -->';
+            let plan = fs.readFileSync('plan.txt', 'utf8');
+            if (plan.length > 60000) plan = plan.slice(0, 60000) + '\n... (truncated)';
+            const body = `${marker}\n### Terraform plan (preview)\n\n<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>\n\nRead-only preview from recorded state. The full plan is shown again before the apply is approved.`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }

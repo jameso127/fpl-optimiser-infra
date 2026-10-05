@@ -55,24 +55,51 @@ Rough monthly estimate for this usage (verify with the pricing calculator; price
 Expect well under £2. The budget alerts at 50%, 90% and 100% (and on forecast) if that changes.
 A budget alerts; it does not stop spending.
 
-## Bootstrap (once, by hand)
+## Terraform in CI
 
-1. Create a GCP project, link billing, and `gcloud auth application-default login` as a user
-   who can create these resources.
-2. Create the Terraform state bucket (this is the only thing created outside Terraform, so the
-   state has somewhere to live):
+Changes go through a pull request and CI does the rest, with one approval click from you.
+
+1. **Pull request:** `ci.yml` runs `fmt` and `validate`, and `plan.yml` posts the plan as a
+   comment. Read it before merging.
+2. **Merge to `main`:** `apply.yml` makes a plan, shows it in the run summary, and waits at
+   the `production` environment for you to approve. It then applies that exact saved plan.
+
+There are no keys anywhere: GitHub proves who it is with a short-lived token (Workload Identity
+Federation). Two accounts are used. The plan account can only read, and any branch of this repo
+can use it. The apply account can create resources, and only a workflow on `main` of this repo
+can use it. Both are created by hand, once, outside this Terraform, so the pipeline cannot
+widen its own access.
+
+The apply account has to be powerful: it manages IAM, so it can grant itself any role on the
+project (treat it as project admin). It is contained by the `main`-only rule, the approval step,
+and the fact nothing else can use it. A dedicated project for this app would shrink the risk
+further. The preview uses `-refresh=false` (code against recorded state, no live lookups); the
+plan in the apply run is the full one.
+
+### Setting it up (once)
+
+1. A GCP project with billing, and the state bucket (created by hand; it is the one thing outside
+   Terraform, so the state has somewhere to live):
    ```
-   gcloud storage buckets create gs://<state-bucket> --location=<region> \
-     --uniform-bucket-level-access --public-access-prevention
+   gcloud storage buckets create gs://<state-bucket> --location=<region>      --uniform-bucket-level-access --public-access-prevention
    gcloud storage buckets update gs://<state-bucket> --versioning
    ```
-3. `cp terraform.tfvars.example terraform.tfvars` and fill in `project_id` and
-   `github_repository` (and optionally `billing_account_id`).
-4. ```
-   terraform init -backend-config="bucket=<state-bucket>"
-   terraform plan -out tfplan      # read it
-   terraform apply tfplan          # a human applies; nothing here applies automatically
-   ```
+2. Check the project has no Firestore database yet (a project has one `(default)`):
+   `gcloud firestore databases list --project <project>`.
+3. Read, then run `./scripts/bootstrap-ci.sh <project-id> <owner>/<this-repo> <state-bucket>`.
+   It creates the two accounts and the login rule, and prints the variables below.
+4. On this repo, add GitHub Actions variables (Settings > Secrets and variables > Actions >
+   Variables; none are secret): `GCP_WIF_PROVIDER`, `GCP_TERRAFORM_SA`, `GCP_PLANNER_SA`,
+   `TF_STATE_BUCKET`, `PROJECT_ID` (printed by the script), plus `REGION`, `BACKEND_REPOSITORY`
+   (`owner/backend-repo`), `FPL_TEAM_ID` and `TELEGRAM_CHAT_ID`.
+5. Settings > Environments > New environment `production`: add yourself as a required reviewer,
+   and under deployment branches choose "Selected branches" and allow only `main`.
+6. Settings > Branches: protect `main` (require a pull request, and the `ci` check).
+7. Open a pull request. The first merge applies everything (it creates the bucket, jobs,
+   workflow and so on). Leave `billing_account_id` unset in CI: the budget needs a role on the
+   billing account, so create that budget by hand if you want it.
+
+Run `terraform plan` locally any time you like (read-only commands are fine); only CI applies.
 
 ## Connect the backend repo
 
