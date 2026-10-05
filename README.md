@@ -7,8 +7,8 @@ Designed to stay under **~£2/month**: everything is serverless and scales to ze
 billing budget with alerts is part of the config.
 
 ```
-Cloud Scheduler --07:00 daily--> Cloud Workflows (fpl-pipeline)
-      ingest, then on a deadline day: wait until 10:00 (or 2.5h before), run
+Cloud Scheduler --10:00 daily--> Cloud Workflows (fpl-pipeline)
+      check the schedule (fpl-ingest, SCHEDULE_ONLY); on a deadline day run
       fpl-ingest -> fpl-predict -> fpl-optimise -> fpl-notify (Telegram)
 Cloud Scheduler --weekly--> Cloud Run job: fpl-train   (train, evaluate, maybe promote a model)
 
@@ -23,7 +23,7 @@ GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
 | Area | Resources |
 |---|---|
 | Compute | Cloud Run jobs `fpl-ingest`, `fpl-train`, `fpl-predict`, `fpl-optimise`, `fpl-notify`. Created with a placeholder image; CI replaces it, and Terraform ignores image changes. |
-| Orchestration | Workflow `fpl-pipeline` (reads `schedule.json`, waits until send time on deadline days, runs the four jobs); Scheduler `fpl-pipeline-daily` and `fpl-train-weekly`. |
+| Orchestration | Workflow `fpl-pipeline` (checks `schedule.json`, runs the four jobs on deadline days); Scheduler `fpl-pipeline-daily` and `fpl-train-weekly`. |
 | Storage | Bucket `<project>-fpl-data` (versioned, 30-day cleanup of old versions, public access blocked); Artifact Registry repo `fpl` (keeps the newest 5 versions of each image). |
 | Identity | Service accounts `fpl-runtime`, `fpl-workflow`, `fpl-scheduler`, `fpl-deployer`; Workload Identity Federation pool for GitHub (no keys). |
 | Users | Firestore (Native mode, a named database, `fpl-users` by default) for the bot's users, with TTL policies that expire declared transfers and invites automatically. |
@@ -35,7 +35,7 @@ GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
 | Principal | Can |
 |---|---|
 | `fpl-runtime` (jobs) | read/write the data bucket; read its own secrets; read/write Firestore (`datastore.user`) |
-| `fpl-workflow` | run the pipeline jobs (`run.invoker` on each); read the bucket (`schedule.json`); view Cloud Run operations; write logs |
+| `fpl-workflow` | run the pipeline jobs, with overrides (custom role `fplJobRunner` on each); read the bucket (`schedule.json`); view Cloud Run operations; write logs |
 | `fpl-scheduler` | start workflow executions; run `fpl-train` |
 | `fpl-deployer` (GitHub) | push images; update the existing jobs; act as `fpl-runtime`. Only workflows in `github_repository` on `deploy_ref` (default `refs/heads/main`) can assume it. |
 
@@ -119,23 +119,22 @@ After the first `apply`:
 1. **Workflow run**: `gcloud workflows run fpl-pipeline --location=<region> --data='{"force": true}'`.
    Runs ingest, predict, optimise and notify for real, so it sends you a Telegram message. If it
    fails with a permission error on the jobs, or on polling operations, the `fpl-workflow`
-   roles in `iam.tf` need adjusting (`run.invoker` per job is for `jobs.run`; `run.viewer` at
-   project level is for the operation it waits on).
+   roles in `iam.tf` need adjusting (`fplJobRunner` per job is for `jobs.run` and its overrides;
+   `run.viewer` at project level is for the operation it waits on).
 2. **Scheduler to Cloud Run job**: `gcloud scheduler jobs run fpl-train-weekly --location=<region>`.
    The scheduler account has `run.invoker` on `fpl-train`; if the API returns 403 it needs
    `run.developer` there instead.
-3. **Schedule reading**: `--data='{}'` on a day that is not a deadline day should end with
-   "not a deadline day, so only refreshed the data and predictions". That also proves the
-   workflow can read `schedule.json`. If the step fails on the file's content type, adjust
+3. **Schedule check**: `--data='{}'` on a day that is not a deadline day should end with "the
+   next deadline (gameweek N) is not today, so nothing was run". That proves the
+   `SCHEDULE_ONLY` override works (a 403 means `fplJobRunner` is wrong) and that the workflow
+   can read `schedule.json`. If the step fails on the file's content type, adjust
    `parse_schedule` in `workflows/pipeline.yaml`.
-4. **Waiting**: on a deadline day the execution stays "active" until the send time; that is the
-   workflow sleeping, not a hang.
 
 ## Operating notes
 
-- The workflow starts daily at 07:00 UK (`pipeline_schedule`). It always refreshes the data and
-  predictions, and only sends on deadline days. If a deadline is early enough that the send
-  time is before 07:00, it sends immediately. `{"force": true}` skips the wait and the check.
+- The workflow starts daily at 10:00 UK (`pipeline_schedule`). It only runs the pipeline, and
+  so only sends, on deadline days. A deadline before 10:00 is missed (accepted for now).
+  `{"force": true}` skips the check.
 - Training runs weekly (`train_schedule`, Mondays 06:00). The train job promotes a model only
   if it passes its gate; otherwise the serving model is unchanged.
 - The data bucket holds snapshots that cannot be recreated (FPL's pre-deadline `ep_next`), so

@@ -36,14 +36,24 @@ resource "google_storage_bucket_iam_member" "runtime_data" {
 }
 
 # --- workflow: run the pipeline jobs ------------------------------------------------------
-# Granted per job (not on the project) and only the right to run it.
+# The daily check runs fpl-ingest with SCHEDULE_ONLY=true, which is a run with overrides.
+# roles/run.invoker does not allow that and roles/run.developer would also allow editing the
+# job, so this custom role has just the two permissions.
+resource "google_project_iam_custom_role" "job_runner" {
+  role_id     = "fplJobRunner"
+  title       = "FPL job runner"
+  description = "Run a Cloud Run job, with per-run overrides. Cannot change the job."
+  permissions = ["run.jobs.run", "run.jobs.runWithOverrides"]
+}
+
+# Granted per job (not on the project).
 resource "google_cloud_run_v2_job_iam_member" "workflow_runs_jobs" {
   for_each = local.jobs
 
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_job.job[each.key].name
-  role     = "roles/run.invoker"
+  role     = google_project_iam_custom_role.job_runner.id
   member   = "serviceAccount:${google_service_account.workflow.email}"
 }
 

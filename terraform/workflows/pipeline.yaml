@@ -1,14 +1,13 @@
 # Pipeline: ingest -> predict -> optimise -> notify.
 #
-# Cloud Scheduler starts this every morning at 07:00 UK time.
-#   1. Run ingest. It saves the day's data and writes schedule.json, which says whether the next
-#      deadline is today and when to send (10:00, or 2.5 hours before an early deadline).
-#   2. Not a deadline day: refresh the predictions and stop.
-#   3. Deadline day: sleep until the run time, then run the whole pipeline again so the advice
-#      uses the latest injury news, ending with the Telegram message.
-# The timing rule lives in the backend (ingest/schedule.py, tested); this only reads the result.
+# Cloud Scheduler starts this every morning at 10:00 UK time.
+#   1. Run ingest in SCHEDULE_ONLY mode. It reads the FPL schedule and writes a small
+#      schedule.json saying whether the next deadline is today.
+#   2. Not a deadline day: stop.
+#   3. Deadline day: run the four jobs in order, ending with the Telegram message.
+# The deadline-day rule lives in the backend (ingest/schedule.py, tested); this only reads the result.
 #
-# Manual run, skipping the wait and the deadline check:
+# Manual run, skipping the deadline check:
 #   gcloud workflows run fpl-pipeline --location=<region> --data='{"force": true}'
 
 main:
@@ -21,13 +20,22 @@ main:
           - bucket: ${sys.get_env("DATA_BUCKET")}
           - jobs: ${json.decode(sys.get_env("PIPELINE_JOBS"))}
           - force: ${default(map.get(args, "force"), false)}
+          - gameweek: "unknown"
 
-    - ingest_first:
+    - check_force:
+        switch:
+          - condition: ${force}
+            next: run_jobs
+
+    - check_schedule:
         call: run_job
         args:
           name: fpl-ingest
           project: ${project}
           location: ${location}
+          env:
+            - name: SCHEDULE_ONLY
+              value: "true"
 
     - read_schedule:
         call: http.get
@@ -40,27 +48,14 @@ main:
     - parse_schedule:
         assign:
           - schedule: ${if(get_type(stored.body) == "map", stored.body, json.decode(stored.body))}
+          - gameweek: ${schedule.gameweek}
 
     - decide:
         switch:
-          - condition: ${force or schedule.deadline_day}
-            next: wait_until_run_time
+          - condition: ${schedule.deadline_day}
+            next: run_jobs
     - not_a_deadline_day:
-        call: run_job
-        args:
-          name: fpl-predict
-          project: ${project}
-          location: ${location}
-    - nothing_to_send:
-        return: ${"not a deadline day, so only refreshed the data and predictions"}
-
-    - wait_until_run_time:
-        assign:
-          - seconds_to_wait: ${if(force, 0, math.max(0, time.parse(schedule.run_at) - sys.now()))}
-    - sleep:
-        call: sys.sleep
-        args:
-          seconds: ${seconds_to_wait}
+        return: ${"the next deadline (gameweek " + string(schedule.gameweek) + ") is not today, so nothing was run"}
 
     - run_jobs:
         for:
@@ -75,12 +70,16 @@ main:
                   location: ${location}
 
     - finished:
-        return: ${"sent gameweek " + string(schedule.gameweek) + " after waiting " + string(seconds_to_wait) + " seconds"}
+        return: ${"ran the pipeline for gameweek " + string(gameweek)}
 
 run_job:
-  params: [name, project, location]
+  params: [name, project, location, env: []]
   steps:
     - execute:
         call: googleapis.run.v2.projects.locations.jobs.run
         args:
           name: ${"projects/" + project + "/locations/" + location + "/jobs/" + name}
+          body:
+            overrides:
+              containerOverrides:
+                - env: ${env}
