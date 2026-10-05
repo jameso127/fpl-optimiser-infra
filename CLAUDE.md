@@ -11,13 +11,13 @@ Say what a new resource costs before adding it.
 
 ## Rules
 
-- **Never run `terraform apply` or `terraform destroy`**, or any `gcloud` command that creates,
-  changes or deletes resources. Propose a plan (`terraform plan`) and let the human review and
-  apply. Read-only commands (`fmt`, `validate`, `plan`, `output`) are fine.
+- **Never run `terraform apply` or `terraform destroy` locally.** CI does it: plan on PR (read-only
+  via WIF), apply on merge to main (full creds, behind approval environment).
+  Read-only commands (`fmt`, `validate`, `plan`, `output`) are fine locally.
 - No secrets in this repo, state or variables: secret *containers* only; values are added by
-  hand with `gcloud secrets versions add`. No service account keys, ever. CI uses Workload
-  Identity Federation.
-- CI in this repo gets no cloud credentials: it only runs `fmt` and `validate`.
+  hand with `gcloud secrets versions add`. No service account keys, ever.
+- CI uses Workload Identity Federation: `validate.yml` needs no creds; `plan.yml` gets read-only
+  via `GCP_PLANNER_SA`; `apply.yml` gets deployer via `GCP_DEPLOYER_SA`.
 - Least privilege: grant roles on the narrowest resource that works; explain any project-level
   role in a comment.
 - Pin provider versions (`~>`), actions to a version or SHA, and give each workflow minimal
