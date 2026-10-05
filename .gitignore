@@ -1,0 +1,12 @@
+# Terraform working data and state: state lives in the GCS backend, never in git.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfplan
+tfplan
+
+# Real variable values (project ids, billing account). The example file is committed.
+terraform.tfvars
+*.auto.tfvars
+.env
