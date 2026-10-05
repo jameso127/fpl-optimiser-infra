@@ -92,7 +92,6 @@ gcloud storage buckets set-iam-policy gs://$BUCKET policy.json
 | `GCP_PLANNER_SA` | `fpl-terraform-plan@<project>.iam.gserviceaccount.com` |
 | `TF_STATE_BUCKET`, `PROJECT_ID`, `REGION` | as named |
 | `BACKEND_REPOSITORY` | `owner/backend-repo` (the repo that deploys images) |
-| `FPL_TEAM_ID`, `TELEGRAM_CHAT_ID` | your ids; use secrets instead if the repo is public |
 
 **Environment** `production` (Settings > Environments): add yourself as a required reviewer, and
 allow deployment from the `main` branch only.

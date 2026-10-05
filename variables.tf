@@ -38,22 +38,10 @@ variable "image_keep_count" {
   default     = 5
 }
 
-variable "fpl_team_id" {
-  description = "FPL team (manager) id the optimiser advises. Public, not a secret."
-  type        = number
-  default     = null
-}
-
-variable "telegram_chat_id" {
-  description = "Telegram chat the owner's recommendations are sent to (single-user mode). Not a secret."
-  type        = number
-  default     = null
-}
-
 variable "users_backend" {
-  description = "Where users live: \"memory\" (just the owner above) or \"firestore\" (everyone who registered with the bot)."
+  description = "Where users (chat id, FPL team id, settings) live: \"firestore\", or \"memory\" for none (jobs then do nothing)."
   type        = string
-  default     = "memory"
+  default     = "firestore"
 
   validation {
     condition     = contains(["memory", "firestore"], var.users_backend)

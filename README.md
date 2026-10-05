@@ -154,6 +154,21 @@ with a TTL policy, so the database deletes stale data itself. Notes:
   talks to Firestore as `fpl-runtime`, so there are no security rules to maintain.
 - The backend's contract tests run against the Firestore emulator in CI.
 
+### Adding yourself (until the bot can register people)
+
+Nobody's ids live in Terraform or GitHub. Users are documents in Firestore. In the Google Cloud
+console go to Firestore > Data > Start collection `users`, with document id = your Telegram chat
+id, and these fields:
+
+| Field | Type | Value |
+|---|---|---|
+| `chat_id` | number | your Telegram chat id |
+| `fpl_team_id` | number | your FPL team id |
+| `active` | boolean | `true` |
+
+The jobs pick it up on the next run. The bot's `/start` will replace this step. To pause
+yourself, set `active` to `false`.
+
 ## Not here yet
 
 - An API service (Cloud Run, scale to zero) and the Telegram bot webhook: both are planned and
