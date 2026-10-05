@@ -12,14 +12,14 @@ Say what a new resource costs before adding it.
 ## Rules
 
 - **Never run `terraform apply` or `terraform destroy`**, or any `gcloud` command that creates,
-  changes or deletes resources. Changes go through a pull request: CI previews the plan, and
-  `apply.yml` applies it after merge once the human approves the `production` environment.
-  Read-only commands (`fmt`, `validate`, `plan`, `output`) are fine. The CI identities are
-  created once, by hand, with `scripts/bootstrap-ci.sh` (written for the human to run).
+  changes or deletes resources. Changes go through a pull request: the
+  `terraform` workflow validates and previews the plan, and after merge applies it once the
+  human approves the `production` environment. Read-only commands (`fmt`, `validate`, `plan`,
+  `output`) are fine. The CI identities are created once, by hand (docs/bootstrap.md).
 - No secrets in this repo, state or variables: secret *containers* only; values are added by
   hand with `gcloud secrets versions add`. No service account keys, ever.
-- CI credentials come only from Workload Identity Federation. `ci.yml` has none (`fmt` and
-  `validate`); `plan.yml` uses a read-only account; `apply.yml` uses the apply account, which only
+- CI credentials come only from Workload Identity Federation. `validate` has none; `plan` on
+  a pull request uses a read-only account; `apply` uses the apply account, which only
   `refs/heads/main` of this repo can assume. These accounts are NOT managed by this Terraform, so
   the pipeline cannot change its own access.
 - Least privilege: grant roles on the narrowest resource that works; explain any project-level

@@ -57,49 +57,22 @@ A budget alerts; it does not stop spending.
 
 ## Terraform in CI
 
-Changes go through a pull request and CI does the rest, with one approval click from you.
+One pipeline, `.github/workflows/terraform.yml`, with three stages:
 
-1. **Pull request:** `ci.yml` runs `fmt` and `validate`, and `plan.yml` posts the plan as a
-   comment. Read it before merging.
-2. **Merge to `main`:** `apply.yml` makes a plan, shows it in the run summary, and waits at
-   the `production` environment for you to approve. It then applies that exact saved plan.
+| Stage | Pull request | Merge to `main` |
+|---|---|---|
+| validate | `fmt` and `validate`, no credentials | same |
+| plan | read-only preview, posted as a comment | full plan, shown in the run summary |
+| apply | not run | waits for you to approve the `production` environment, then applies that exact plan |
 
-There are no keys anywhere: GitHub proves who it is with a short-lived token (Workload Identity
-Federation). Two accounts are used. The plan account can only read, and any branch of this repo
-can use it. The apply account can create resources, and only a workflow on `main` of this repo
-can use it. Both are created by hand, once, outside this Terraform, so the pipeline cannot
-widen its own access.
+No keys anywhere: GitHub proves who it is with a short-lived token, and Google only accepts
+this repo. The plan account can read but not change anything. The apply account can create
+resources and only `main` can use it; it is effectively project admin because it manages IAM,
+which is why it sits behind your approval and why the accounts are created by hand, outside
+this Terraform, so the pipeline cannot widen its own access (see [docs/bootstrap.md](docs/bootstrap.md),
+which also has the one-off setup). A dedicated project would limit the blast radius further.
 
-The apply account has to be powerful: it manages IAM, so it can grant itself any role on the
-project (treat it as project admin). It is contained by the `main`-only rule, the approval step,
-and the fact nothing else can use it. A dedicated project for this app would shrink the risk
-further. The preview uses `-refresh=false` (code against recorded state, no live lookups); the
-plan in the apply run is the full one.
-
-### Setting it up (once)
-
-1. A GCP project with billing, and the state bucket (created by hand; it is the one thing outside
-   Terraform, so the state has somewhere to live):
-   ```
-   gcloud storage buckets create gs://<state-bucket> --location=<region>      --uniform-bucket-level-access --public-access-prevention
-   gcloud storage buckets update gs://<state-bucket> --versioning
-   ```
-2. Check the project has no Firestore database yet (a project has one `(default)`):
-   `gcloud firestore databases list --project <project>`.
-3. Read, then run `./scripts/bootstrap-ci.sh <project-id> <owner>/<this-repo> <state-bucket>`.
-   It creates the two accounts and the login rule, and prints the variables below.
-4. On this repo, add GitHub Actions variables (Settings > Secrets and variables > Actions >
-   Variables; none are secret): `GCP_WIF_PROVIDER`, `GCP_TERRAFORM_SA`, `GCP_PLANNER_SA`,
-   `TF_STATE_BUCKET`, `PROJECT_ID` (printed by the script), plus `REGION`, `BACKEND_REPOSITORY`
-   (`owner/backend-repo`), `FPL_TEAM_ID` and `TELEGRAM_CHAT_ID`.
-5. Settings > Environments > New environment `production`: add yourself as a required reviewer,
-   and under deployment branches choose "Selected branches" and allow only `main`.
-6. Settings > Branches: protect `main` (require a pull request, and the `ci` check).
-7. Open a pull request. The first merge applies everything (it creates the bucket, jobs,
-   workflow and so on). Leave `billing_account_id` unset in CI: the budget needs a role on the
-   billing account, so create that budget by hand if you want it.
-
-Run `terraform plan` locally any time you like (read-only commands are fine); only CI applies.
+Run `terraform plan` locally whenever you like; only the pipeline applies.
 
 ## Connect the backend repo
 
