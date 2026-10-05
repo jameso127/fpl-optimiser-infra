@@ -44,6 +44,23 @@ variable "fpl_team_id" {
   default     = null
 }
 
+variable "telegram_chat_id" {
+  description = "Telegram chat the owner's recommendations are sent to (single-user mode). Not a secret."
+  type        = number
+  default     = null
+}
+
+variable "users_backend" {
+  description = "Where users live: \"memory\" (just the owner above) or \"firestore\" (everyone who registered with the bot)."
+  type        = string
+  default     = "memory"
+
+  validation {
+    condition     = contains(["memory", "firestore"], var.users_backend)
+    error_message = "users_backend must be \"memory\" or \"firestore\"."
+  }
+}
+
 variable "frontend_origin" {
   description = "Origin allowed by the API's CORS policy (the web app's URL). Empty until the frontend exists."
   type        = string
@@ -94,12 +111,6 @@ variable "monthly_budget" {
 variable "budget_currency" {
   type    = string
   default = "GBP"
-}
-
-variable "enable_odds_secret" {
-  description = "Create a Secret Manager secret for a betting-odds API key (not used yet)."
-  type        = bool
-  default     = false
 }
 
 variable "deletion_protection" {

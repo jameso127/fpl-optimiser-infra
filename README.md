@@ -30,7 +30,7 @@ GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
 | Storage | Bucket `<project>-fpl-data` (versioned, 30-day cleanup of old versions, public access blocked); Artifact Registry repo `fpl` (keeps the newest 5 versions of each image). |
 | Identity | Service accounts `fpl-runtime`, `fpl-workflow`, `fpl-scheduler`, `fpl-deployer`; Workload Identity Federation pool for GitHub (no keys). |
 | Users | Firestore (Native mode, `(default)` database) for the bot's users, with TTL policies that expire declared transfers and invites automatically. |
-| Secrets | Secret container `resend-api-key` (optional `odds-api-key`). Values are added by hand. |
+| Secrets | Secret container `telegram-bot-token`. The value is added by hand. |
 | Guardrail | Optional monthly budget with 50/90/100% and forecast alerts. |
 
 ### Access, at a glance
@@ -108,7 +108,7 @@ needs your credentials; do it yourself. After that, `fpl-train-weekly` keeps the
 Terraform creates the secret *container* and a placeholder first version (so the notify job
 can start). Add the real value:
 ```
-printf '%s' "$RESEND_API_KEY" | gcloud secrets versions add resend-api-key --data-file=-
+printf '%s' "$TELEGRAM_BOT_TOKEN" | gcloud secrets versions add telegram-bot-token --data-file=-
 ```
 Cloud Run reads `latest`, so the next job run picks it up. Terraform never sees the value.
 
@@ -117,12 +117,11 @@ Cloud Run reads `latest`, so the next job run picks it up. Terraform never sees 
 Static validation (`terraform validate`) passes, but these only show up against a real project.
 After the first `apply`:
 
-1. **Workflow smoke test**: `gcloud workflows run fpl-pipeline --location=<region> --data='{"dry_run": true}'`.
-   Runs ingest, train, predict, optimise and notify in fixture mode. With the placeholder images
-   it just succeeds; with the real images it exercises the whole chain on fixture data. If it fails with a permission error on the jobs,
-   or on polling operations, the `fpl-workflow` roles in `iam.tf` need adjusting
-   (`run.developer` per job is for `jobs.run` with overrides; `run.viewer` at project level is
-   for the operation it waits on).
+1. **Workflow run**: `gcloud workflows run fpl-pipeline --location=<region> --data='{"force": true}'`.
+   Runs ingest, predict, optimise and notify for real, so it sends you a Telegram message. If it
+   fails with a permission error on the jobs, or on polling operations, the `fpl-workflow`
+   roles in `iam.tf` need adjusting (`run.invoker` per job is for `jobs.run`; `run.viewer` at
+   project level is for the operation it waits on).
 2. **Scheduler to Cloud Run job**: `gcloud scheduler jobs run fpl-train-weekly --location=<region>`.
    The scheduler account has `run.invoker` on `fpl-train`; if the API returns 403 it needs
    `run.developer` there instead.
@@ -160,7 +159,6 @@ with a TTL policy, so the database deletes stale data itself. Notes:
 
 - BigQuery: planned as external tables over the Parquet files (no duplicated storage, inside
   the free tier). Add when wanted; it needs the BigQuery API and a dataset.
-- Betting-odds API key: set `enable_odds_secret = true` when that feature lands.
 - The backend's `ci.yml` / `deploy.yml` live in the backend repo.
 
 ## Checks

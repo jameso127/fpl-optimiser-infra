@@ -22,13 +22,11 @@ locals {
 
   # Environment variables backed by Secret Manager, per job (most jobs have none).
   job_secrets = {
-    fpl-notify = { RESEND_API_KEY = google_secret_manager_secret.resend.secret_id }
+    fpl-notify = { TELEGRAM_BOT_TOKEN = google_secret_manager_secret.telegram.secret_id }
   }
 
-  # The per-gameweek pipeline, in order. fpl-train runs on its own schedule instead; a dry run
-  # (smoke test) also runs it, so predict has a model to serve in the dry-run data directory.
+  # The per-gameweek pipeline, in order. fpl-train runs on its own schedule instead.
   pipeline_order = ["fpl-ingest", "fpl-predict", "fpl-optimise", "fpl-notify"]
-  dry_run_order  = ["fpl-ingest", "fpl-train", "fpl-predict", "fpl-optimise", "fpl-notify"]
 
   common_env = merge(
     {
@@ -36,8 +34,10 @@ locals {
       GCP_REGION     = var.region
       DATA_BUCKET    = google_storage_bucket.data.name
       LOG_LEVEL      = "INFO"
+      USERS_BACKEND  = var.users_backend
     },
     var.fpl_team_id == null ? {} : { FPL_TEAM_ID = tostring(var.fpl_team_id) },
+    var.telegram_chat_id == null ? {} : { TELEGRAM_CHAT_ID = tostring(var.telegram_chat_id) },
   )
 }
 
@@ -100,8 +100,8 @@ resource "google_cloud_run_v2_job" "job" {
 
   depends_on = [
     google_project_service.api,
-    google_secret_manager_secret_version.resend_placeholder,
-    google_secret_manager_secret_iam_member.runtime_reads_resend,
+    google_secret_manager_secret_version.telegram_placeholder,
+    google_secret_manager_secret_iam_member.runtime_reads_telegram,
     google_storage_bucket_iam_member.runtime_data,
   ]
 }

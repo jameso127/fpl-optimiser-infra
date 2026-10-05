@@ -1,14 +1,13 @@
 resource "google_workflows_workflow" "pipeline" {
   name            = "fpl-pipeline"
   region          = var.region
-  description     = "Per-gameweek pipeline: ingest, predict, optimise, notify."
+  description     = "Pipeline: ingest, predict, optimise, notify."
   service_account = google_service_account.workflow.email
   call_log_level  = "LOG_ERRORS_ONLY"
 
   user_env_vars = {
     DEADLINE_WINDOW_HOURS = tostring(var.deadline_window_hours)
     PIPELINE_JOBS         = jsonencode(local.pipeline_order)
-    DRY_RUN_JOBS          = jsonencode(local.dry_run_order)
   }
 
   source_contents = file("${path.module}/workflows/pipeline.yaml")

@@ -36,16 +36,14 @@ resource "google_storage_bucket_iam_member" "runtime_data" {
 }
 
 # --- workflow: run the pipeline jobs ------------------------------------------------------
-# Running a job with env overrides (DRY_RUN) needs run.jobs.runWithOverrides, which sits in
-# roles/run.developer, so it is granted per job rather than on the project. fpl-train is
-# included because a dry-run smoke test runs it; the weekly real run is started by Scheduler.
+# Granted per job (not on the project) and only the right to run it.
 resource "google_cloud_run_v2_job_iam_member" "workflow_runs_jobs" {
   for_each = local.jobs
 
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_job.job[each.key].name
-  role     = "roles/run.developer"
+  role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.workflow.email}"
 }
 
@@ -102,13 +100,6 @@ resource "google_cloud_run_v2_service_iam_member" "deployer_updates_api" {
   name     = google_cloud_run_v2_service.api.name
   role     = "roles/run.developer"
   member   = "serviceAccount:${google_service_account.deployer.email}"
-}
-
-# The optional post-deploy smoke test runs the pipeline workflow in dry-run mode.
-resource "google_project_iam_member" "deployer_runs_workflows" {
-  project = var.project_id
-  role    = "roles/workflows.invoker"
-  member  = "serviceAccount:${google_service_account.deployer.email}"
 }
 
 # Deploying a revision that runs as fpl-runtime requires permission to act as it.

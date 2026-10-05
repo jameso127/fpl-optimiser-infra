@@ -4,14 +4,8 @@
 # within DEADLINE_WINDOW_HOURS, so the daily trigger costs nothing most days. Every job is
 # idempotent, so re-running inside the window just refreshes the outputs.
 #
-# Manual runs:
-#   gcloud workflows run fpl-pipeline --location=<region> --data='{"dry_run": true}'
+# Manual run, skipping the deadline check:
 #   gcloud workflows run fpl-pipeline --location=<region> --data='{"force": true}'
-#
-# `dry_run` runs every job with DRY_RUN=true (fixture data, no email) and skips the deadline
-# check, so it doubles as the deployment smoke test. A dry run uses its own empty data
-# directory and `predict` never trains, so the dry-run job list also includes fpl-train,
-# which registers a throwaway model there for predict to serve.
 
 main:
   params: [args]
@@ -21,14 +15,13 @@ main:
           - project: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
           - location: ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
           - window_hours: ${int(sys.get_env("DEADLINE_WINDOW_HOURS"))}
-          - dry_run: ${default(map.get(args, "dry_run"), false)}
           - force: ${default(map.get(args, "force"), false)}
           - hours_until: -1
-          - jobs: ${if(dry_run, json.decode(sys.get_env("DRY_RUN_JOBS")), json.decode(sys.get_env("PIPELINE_JOBS")))}
+          - jobs: ${json.decode(sys.get_env("PIPELINE_JOBS"))}
 
     - skip_deadline_check:
         switch:
-          - condition: ${dry_run or force}
+          - condition: ${force}
             next: run_jobs
 
     - fetch_gameweeks:
@@ -71,13 +64,7 @@ main:
                 call: googleapis.run.v2.projects.locations.jobs.run
                 args:
                   name: ${"projects/" + project + "/locations/" + location + "/jobs/" + job}
-                  body:
-                    overrides:
-                      containerOverrides:
-                        - env:
-                            - name: DRY_RUN
-                              value: ${string(dry_run)}
                 result: execution
 
     - finished:
-        return: ${"pipeline finished for " + string(len(jobs)) + " jobs, dry_run=" + string(dry_run)}
+        return: ${"pipeline finished: " + string(len(jobs)) + " jobs"}
