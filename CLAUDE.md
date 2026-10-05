@@ -39,5 +39,6 @@ it is added here first.
 
 ## Workflow
 
-1. Change `.tf` files. 2. `terraform fmt -recursive` and `terraform validate`.
-3. `terraform plan` and read it. 4. A human applies. Conventional commits.
+1. Change the `.tf` files in `terraform/`. 2. In that folder, `terraform fmt -recursive` and
+`terraform validate`. 3. `terraform plan` and read it. 4. Open a pull request; a human approves
+the apply after merge. Conventional commits.

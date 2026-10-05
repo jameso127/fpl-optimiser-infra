@@ -23,6 +23,11 @@ concurrency:
   group: terraform-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The Terraform code lives in terraform/, so every `run` step starts there.
+defaults:
+  run:
+    working-directory: terraform
+
 env:
   TF_VAR_project_id: ${{ vars.PROJECT_ID }}
   TF_VAR_region: ${{ vars.REGION }}
@@ -82,7 +87,7 @@ jobs:
           script: |
             const fs = require('fs');
             const marker = '<!-- terraform-plan -->';
-            let plan = fs.readFileSync('plan.txt', 'utf8');
+            let plan = fs.readFileSync('terraform/plan.txt', 'utf8');
             if (plan.length > 60000) plan = plan.slice(0, 60000) + '\n... (truncated)';
             const body = `${marker}\n### Terraform plan (preview)\n\n<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>\n\nA preview from recorded state. The full plan is shown again before any apply.`;
             const { owner, repo } = context.repo;
@@ -98,7 +103,7 @@ jobs:
         if: github.event_name != 'pull_request' && steps.plan.outputs.changes == 'true'
         with:
           name: tfplan
-          path: tfplan
+          path: terraform/tfplan
           retention-days: 1
 
   apply:
@@ -114,6 +119,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: tfplan
+          path: terraform
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
