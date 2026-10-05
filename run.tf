@@ -30,12 +30,15 @@ locals {
   pipeline_order = ["fpl-ingest", "fpl-predict", "fpl-optimise", "fpl-notify"]
   dry_run_order  = ["fpl-ingest", "fpl-train", "fpl-predict", "fpl-optimise", "fpl-notify"]
 
-  common_env = {
-    GCP_PROJECT_ID = var.project_id
-    GCP_REGION     = var.region
-    DATA_BUCKET    = google_storage_bucket.data.name
-    LOG_LEVEL      = "INFO"
-  }
+  common_env = merge(
+    {
+      GCP_PROJECT_ID = var.project_id
+      GCP_REGION     = var.region
+      DATA_BUCKET    = google_storage_bucket.data.name
+      LOG_LEVEL      = "INFO"
+    },
+    var.fpl_team_id == null ? {} : { FPL_TEAM_ID = tostring(var.fpl_team_id) },
+  )
 }
 
 resource "google_cloud_run_v2_job" "job" {

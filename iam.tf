@@ -104,6 +104,13 @@ resource "google_cloud_run_v2_service_iam_member" "deployer_updates_api" {
   member   = "serviceAccount:${google_service_account.deployer.email}"
 }
 
+# The optional post-deploy smoke test runs the pipeline workflow in dry-run mode.
+resource "google_project_iam_member" "deployer_runs_workflows" {
+  project = var.project_id
+  role    = "roles/workflows.invoker"
+  member  = "serviceAccount:${google_service_account.deployer.email}"
+}
+
 # Deploying a revision that runs as fpl-runtime requires permission to act as it.
 resource "google_service_account_iam_member" "deployer_acts_as_runtime" {
   service_account_id = google_service_account.runtime.name

@@ -38,6 +38,12 @@ variable "image_keep_count" {
   default     = 5
 }
 
+variable "fpl_team_id" {
+  description = "FPL team (manager) id the optimiser advises. Public, not a secret."
+  type        = number
+  default     = null
+}
+
 variable "frontend_origin" {
   description = "Origin allowed by the API's CORS policy (the web app's URL). Empty until the frontend exists."
   type        = string
