@@ -2,11 +2,12 @@
 # transfers a user says they have made, and invitations. It is serverless and bills per
 # operation, with a free tier (1 GiB, 50k reads and 20k writes a day) far above this app's use.
 #
-# The database location cannot be changed after creation, and a project has one (default)
-# database, so this is a deliberate, permanent choice. Delete protection is on.
+# This is a named database (var.firestore_database), not the project's (default) one, so it
+# stays separate from anything else in the project. The location cannot be changed after
+# creation, so it is a deliberate, permanent choice. Delete protection is on.
 
 resource "google_firestore_database" "default" {
-  name                    = "(default)"
+  name                    = var.firestore_database
   location_id             = var.region
   type                    = "FIRESTORE_NATIVE"
   delete_protection_state = "DELETE_PROTECTION_ENABLED"

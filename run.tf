@@ -28,11 +28,12 @@ locals {
 
   common_env = merge(
     {
-      GCP_PROJECT_ID = var.project_id
-      GCP_REGION     = var.region
-      DATA_BUCKET    = google_storage_bucket.data.name
-      LOG_LEVEL      = "INFO"
-      USERS_BACKEND  = var.users_backend
+      GCP_PROJECT_ID     = var.project_id
+      GCP_REGION         = var.region
+      DATA_BUCKET        = google_storage_bucket.data.name
+      LOG_LEVEL          = "INFO"
+      USERS_BACKEND      = var.users_backend
+      FIRESTORE_DATABASE = var.firestore_database
     },
   )
 }

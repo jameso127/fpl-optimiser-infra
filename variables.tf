@@ -38,6 +38,12 @@ variable "image_keep_count" {
   default     = 5
 }
 
+variable "firestore_database" {
+  description = "Name of the Firestore database for users. A named one keeps this app apart from the project's (default) database."
+  type        = string
+  default     = "fpl"
+}
+
 variable "users_backend" {
   description = "Where users (chat id, FPL team id, settings) live: \"firestore\", or \"memory\" for none (jobs then do nothing)."
   type        = string
