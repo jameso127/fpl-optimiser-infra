@@ -69,9 +69,16 @@ for role in viewer iam.securityReviewer; do
 done
 gcloud storage buckets add-iam-policy-binding gs://$BUCKET --member serviceAccount:$PLAN \
   --role roles/storage.objectViewer
-gcloud storage buckets add-iam-policy-binding gs://$BUCKET --member serviceAccount:$PLAN \
-  --role roles/storage.objectUser \
-  --condition "expression=resource.name.endsWith('tflock'),title=terraform-lock-files-only"
+
+# Lock files: a conditional binding must be set as a whole policy at version 3 (gcloud's
+# add-iam-policy-binding sends version 1 and fails). Export the policy, set "version": 3, add
+# this to its "bindings", and set it back with `gcloud storage buckets set-iam-policy`:
+#   {"members": ["serviceAccount:<plan account>"], "role": "roles/storage.objectUser",
+#    "condition": {"title": "terraform-lock-files-only",
+#                  "expression": "resource.name.endsWith('tflock')"}}
+gcloud storage buckets get-iam-policy gs://$BUCKET --format=json > policy.json
+# ...edit policy.json as above, then:
+gcloud storage buckets set-iam-policy gs://$BUCKET policy.json
 ```
 
 ## GitHub settings (infra repo)
