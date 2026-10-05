@@ -8,6 +8,7 @@ locals {
       "artifactregistry.googleapis.com",
       "secretmanager.googleapis.com",
       "storage.googleapis.com",
+      "firestore.googleapis.com",
       "iam.googleapis.com",
       "iamcredentials.googleapis.com",
       "sts.googleapis.com",

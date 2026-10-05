@@ -29,6 +29,7 @@ GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
 | Orchestration | Workflow `fpl-pipeline` (runs the four per-gameweek jobs, only when the next deadline is within `deadline_window_hours`); Scheduler `fpl-pipeline-daily` and `fpl-train-weekly`. |
 | Storage | Bucket `<project>-fpl-data` (versioned, 30-day cleanup of old versions, public access blocked); Artifact Registry repo `fpl` (keeps the newest 5 versions of each image). |
 | Identity | Service accounts `fpl-runtime`, `fpl-workflow`, `fpl-scheduler`, `fpl-deployer`; Workload Identity Federation pool for GitHub (no keys). |
+| Users | Firestore (Native mode, `(default)` database) for the bot's users, with TTL policies that expire declared transfers and invites automatically. |
 | Secrets | Secret container `resend-api-key` (optional `odds-api-key`). Values are added by hand. |
 | Guardrail | Optional monthly budget with 50/90/100% and forecast alerts. |
 
@@ -36,7 +37,7 @@ GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
 
 | Principal | Can |
 |---|---|
-| `fpl-runtime` (jobs, API) | read/write the data bucket; read its own secrets |
+| `fpl-runtime` (jobs, API) | read/write the data bucket; read its own secrets; read/write Firestore (`datastore.user`) |
 | `fpl-workflow` | run the four pipeline jobs (`run.developer` on each, needed for env overrides); view Cloud Run operations; write logs |
 | `fpl-scheduler` | start workflow executions; run `fpl-train` |
 | `fpl-deployer` (GitHub) | push images; update the existing jobs and service; act as `fpl-runtime`. Only workflows in `github_repository` on `deploy_ref` (default `refs/heads/main`) can assume it. |
@@ -140,6 +141,20 @@ After the first `apply`:
   versioning is on and `force_destroy` is off. Cloud Run `deletion_protection` is on by default.
 - Expected points always come from the model. `fpl-predict` fails with a clear message until
   `fpl-train` has registered and promoted a model, so seed the data and train once (below).
+
+## Firestore
+
+One database holds `users/{chat_id}` (with a `declared` subcollection of transfers the user
+says they have made) and `invites/{code}`. Both `declared` and `invites` carry an `expires_at`
+with a TTL policy, so the database deletes stale data itself. Notes:
+
+- The database location is permanent (set from `region`) and a project has one `(default)`
+  database. Delete protection is on.
+- TTL deletion is not instant (usually within a day), so the application also checks
+  `expires_at`.
+- Nothing connects to Firestore from a client: Telegram talks to our service, and our service
+  talks to Firestore as `fpl-runtime`, so there are no security rules to maintain.
+- The backend's contract tests run against the Firestore emulator in CI.
 
 ## Not here yet
 
