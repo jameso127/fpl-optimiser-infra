@@ -72,17 +72,20 @@ which is why it sits behind your approval and why the accounts are created by ha
 this Terraform, so the pipeline cannot widen its own access (see [docs/bootstrap.md](docs/bootstrap.md),
 which also has the one-off setup). A dedicated project would limit the blast radius further.
 
-Run `terraform plan` locally whenever you like; only the pipeline applies.
+Run `terraform plan` locally (in `terraform/`) whenever you like; only the pipeline applies.
 
 ## Connect the backend repo
 
+After the first apply, read the values the backend needs:
 ```
-./scripts/set-github-variables.sh <owner>/<backend-repo>     # needs gh and jq
+cd terraform
+terraform init -backend-config="bucket=<state-bucket>"
+terraform output github_actions_variables
 ```
-This copies `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SA`,
-`ARTIFACT_REGISTRY_REPO` and `DATA_BUCKET` into the repo's GitHub Actions variables (or set
-them by hand from `terraform output github_actions_variables`). The backend's `deploy.yml`
-then deploys with `google-github-actions/auth` using the provider and service account.
+Set `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SA`,
+`ARTIFACT_REGISTRY_REPO` and `DATA_BUCKET` as GitHub Actions variables on the backend repo
+(none are secret). Its `deploy.yml` then deploys with `google-github-actions/auth` using that
+provider and service account.
 
 ## Seed the data and train once
 
@@ -181,6 +184,7 @@ yourself, set `active` to `false`.
 ## Checks
 
 ```
+cd terraform
 terraform fmt -check -recursive
 terraform init -backend=false && terraform validate
 ```
