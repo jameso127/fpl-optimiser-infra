@@ -1,32 +1,29 @@
 # FPL Optimiser: Infrastructure
 
 Terraform for all GCP infrastructure of the FPL optimiser. Application code is in
-[`fpl-optimiser-backend`](../fpl-backend); the frontend is `fpl-optimiser-web`.
+`fpl-optimiser-backend`.
 
 Designed to stay under **~£2/month**: everything is serverless and scales to zero, and a
 billing budget with alerts is part of the config.
 
 ```
-Cloud Scheduler --daily--> Cloud Workflows (fpl-pipeline)
-                              |  only inside the deadline window
-                              v
-            Cloud Run jobs: fpl-ingest -> fpl-predict -> fpl-optimise -> fpl-notify
+Cloud Scheduler --07:00 daily--> Cloud Workflows (fpl-pipeline)
+      ingest, then on a deadline day: wait until 10:00 (or 2.5h before), run
+      fpl-ingest -> fpl-predict -> fpl-optimise -> fpl-notify (Telegram)
 Cloud Scheduler --weekly--> Cloud Run job: fpl-train   (train, evaluate, maybe promote a model)
 
-                 Cloud Storage bucket  (season=<s>/gw=<n>/, models/, monitoring/)
-                              ^
-web --> Cloud Run service: fpl-api   (min instances 0, max 2)
+                 Cloud Storage bucket  (season=<s>/gw=<n>/, models/, monitoring/, schedule.json)
 
 GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
-        pushes images to Artifact Registry and updates the existing jobs/service
+        pushes images to Artifact Registry and updates the existing jobs
 ```
 
 ## What it creates
 
 | Area | Resources |
 |---|---|
-| Compute | Cloud Run jobs `fpl-ingest`, `fpl-train`, `fpl-predict`, `fpl-optimise`, `fpl-notify`; Cloud Run service `fpl-api`. Created with a placeholder image; CI replaces it, and Terraform ignores image changes. |
-| Orchestration | Workflow `fpl-pipeline` (runs the four per-gameweek jobs, only when the next deadline is within `deadline_window_hours`); Scheduler `fpl-pipeline-daily` and `fpl-train-weekly`. |
+| Compute | Cloud Run jobs `fpl-ingest`, `fpl-train`, `fpl-predict`, `fpl-optimise`, `fpl-notify`. Created with a placeholder image; CI replaces it, and Terraform ignores image changes. |
+| Orchestration | Workflow `fpl-pipeline` (reads `schedule.json`, waits until send time on deadline days, runs the four jobs); Scheduler `fpl-pipeline-daily` and `fpl-train-weekly`. |
 | Storage | Bucket `<project>-fpl-data` (versioned, 30-day cleanup of old versions, public access blocked); Artifact Registry repo `fpl` (keeps the newest 5 versions of each image). |
 | Identity | Service accounts `fpl-runtime`, `fpl-workflow`, `fpl-scheduler`, `fpl-deployer`; Workload Identity Federation pool for GitHub (no keys). |
 | Users | Firestore (Native mode, `(default)` database) for the bot's users, with TTL policies that expire declared transfers and invites automatically. |
@@ -37,10 +34,10 @@ GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
 
 | Principal | Can |
 |---|---|
-| `fpl-runtime` (jobs, API) | read/write the data bucket; read its own secrets; read/write Firestore (`datastore.user`) |
-| `fpl-workflow` | run the four pipeline jobs (`run.developer` on each, needed for env overrides); view Cloud Run operations; write logs |
+| `fpl-runtime` (jobs) | read/write the data bucket; read its own secrets; read/write Firestore (`datastore.user`) |
+| `fpl-workflow` | run the pipeline jobs (`run.invoker` on each); read the bucket (`schedule.json`); view Cloud Run operations; write logs |
 | `fpl-scheduler` | start workflow executions; run `fpl-train` |
-| `fpl-deployer` (GitHub) | push images; update the existing jobs and service; act as `fpl-runtime`. Only workflows in `github_repository` on `deploy_ref` (default `refs/heads/main`) can assume it. |
+| `fpl-deployer` (GitHub) | push images; update the existing jobs; act as `fpl-runtime`. Only workflows in `github_repository` on `deploy_ref` (default `refs/heads/main`) can assume it. |
 
 ## Cost
 
@@ -49,7 +46,6 @@ Rough monthly estimate for this usage (verify with the pricing calculator; price
 | Item | Why it is ~free |
 |---|---|
 | Cloud Run jobs | a few minutes a week, inside the monthly free vCPU/memory seconds |
-| Cloud Run `fpl-api` | scales to zero, CPU only during requests, ≤ 2 instances |
 | Workflows | a few dozen steps a day, inside the free steps |
 | Cloud Scheduler | 2 jobs; the first 3 are free |
 | Artifact Registry | cleanup policy keeps it near the free 0.5 GB |
@@ -125,15 +121,18 @@ After the first `apply`:
 2. **Scheduler to Cloud Run job**: `gcloud scheduler jobs run fpl-train-weekly --location=<region>`.
    The scheduler account has `run.invoker` on `fpl-train`; if the API returns 403 it needs
    `run.developer` there instead.
-3. **Deadline logic**: `--data='{}'` should return `skipped - hours until next deadline ...` when
-   the deadline is far off, and run the jobs when it is within the window.
-4. **API**: `curl "$(terraform output -raw api_url)"` shows the placeholder page, until the
-   first backend deploy replaces it.
+3. **Schedule reading**: `--data='{}'` on a day that is not a deadline day should end with
+   "not a deadline day, so only refreshed the data and predictions". That also proves the
+   workflow can read `schedule.json`. If the step fails on the file's content type, adjust
+   `parse_schedule` in `workflows/pipeline.yaml`.
+4. **Waiting**: on a deadline day the execution stays "active" until the send time; that is the
+   workflow sleeping, not a hang.
 
 ## Operating notes
 
-- The pipeline runs daily at 17:00 (`pipeline_schedule`) but only acts inside the deadline
-  window (`deadline_window_hours`, default 36). `{"force": true}` bypasses the check.
+- The workflow starts daily at 07:00 UK (`pipeline_schedule`). It always refreshes the data and
+  predictions, and only sends on deadline days. If a deadline is early enough that the send
+  time is before 07:00, it sends immediately. `{"force": true}` skips the wait and the check.
 - Training runs weekly (`train_schedule`, Mondays 06:00). The train job promotes a model only
   if it passes its gate; otherwise the serving model is unchanged.
 - The data bucket holds snapshots that cannot be recreated (FPL's pre-deadline `ep_next`), so
@@ -157,6 +156,8 @@ with a TTL policy, so the database deletes stale data itself. Notes:
 
 ## Not here yet
 
+- An API service (Cloud Run, scale to zero) and the Telegram bot webhook: both are planned and
+  both are small additions here.
 - BigQuery: planned as external tables over the Parquet files (no duplicated storage, inside
   the free tier). Add when wanted; it needs the BigQuery API and a dataset.
 - The backend's `ci.yml` / `deploy.yml` live in the backend repo.

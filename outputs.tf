@@ -12,11 +12,6 @@ output "github_actions_variables" {
   }
 }
 
-output "api_url" {
-  description = "Base URL of fpl-api (the placeholder page until the first deploy)."
-  value       = google_cloud_run_v2_service.api.uri
-}
-
 output "pipeline_workflow" {
   value = google_workflows_workflow.pipeline.name
 }

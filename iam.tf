@@ -1,12 +1,12 @@
 # Four service accounts, each with only what it needs:
-#   fpl-runtime   what the jobs and the API run as: read/write the data bucket, read secrets
+#   fpl-runtime   what the jobs run as: read/write the data bucket, read secrets
 #   fpl-workflow  runs the pipeline jobs from Cloud Workflows
 #   fpl-scheduler starts the workflow and the weekly train job
 #   fpl-deployer  GitHub Actions (no keys: Workload Identity Federation, see wif.tf)
 
 resource "google_service_account" "runtime" {
   account_id   = "fpl-runtime"
-  display_name = "FPL jobs and API runtime"
+  display_name = "FPL jobs runtime"
   depends_on   = [google_project_service.api]
 }
 
@@ -45,6 +45,13 @@ resource "google_cloud_run_v2_job_iam_member" "workflow_runs_jobs" {
   name     = google_cloud_run_v2_job.job[each.key].name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.workflow.email}"
+}
+
+# The workflow reads schedule.json from the data bucket (read-only).
+resource "google_storage_bucket_iam_member" "workflow_reads_schedule" {
+  bucket = google_storage_bucket.data.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.workflow.email}"
 }
 
 # Waiting for a job to finish polls a long-running operation; that is a project-level read.
@@ -90,14 +97,6 @@ resource "google_cloud_run_v2_job_iam_member" "deployer_updates_jobs" {
   project  = var.project_id
   location = var.region
   name     = each.value.name
-  role     = "roles/run.developer"
-  member   = "serviceAccount:${google_service_account.deployer.email}"
-}
-
-resource "google_cloud_run_v2_service_iam_member" "deployer_updates_api" {
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_service.api.name
   role     = "roles/run.developer"
   member   = "serviceAccount:${google_service_account.deployer.email}"
 }

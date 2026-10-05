@@ -61,28 +61,10 @@ variable "users_backend" {
   }
 }
 
-variable "frontend_origin" {
-  description = "Origin allowed by the API's CORS policy (the web app's URL). Empty until the frontend exists."
-  type        = string
-  default     = ""
-}
-
-variable "api_allow_unauthenticated" {
-  description = "Let anyone on the internet call fpl-api (needed for a public frontend). Set false to require IAM auth."
-  type        = bool
-  default     = true
-}
-
-variable "deadline_window_hours" {
-  description = "The pipeline only runs when the next gameweek deadline is within this many hours."
-  type        = number
-  default     = 36
-}
-
 variable "pipeline_schedule" {
-  description = "Cron for the daily pipeline check (the workflow itself decides whether a deadline is close enough to run)."
+  description = "Cron for the daily pipeline start, in schedule_time_zone. Data refreshes daily; messages only go out on deadline days."
   type        = string
-  default     = "0 17 * * *"
+  default     = "0 7 * * *"
 }
 
 variable "train_schedule" {

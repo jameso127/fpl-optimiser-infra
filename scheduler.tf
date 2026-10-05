@@ -1,10 +1,10 @@
 # Two cheap triggers (Cloud Scheduler gives 3 jobs free per month):
-#   daily  -> the pipeline workflow, which decides for itself whether a deadline is near
+#   daily  -> the pipeline workflow, which decides from schedule.json whether today is a deadline day
 #   weekly -> the train job, which trains, evaluates and (if it passes the gate) promotes
 
 resource "google_cloud_scheduler_job" "pipeline" {
   name             = "fpl-pipeline-daily"
-  description      = "Start the pipeline workflow; it only acts inside the deadline window."
+  description      = "Start the pipeline workflow each morning; it only sends on deadline days."
   region           = var.region
   schedule         = var.pipeline_schedule
   time_zone        = var.schedule_time_zone

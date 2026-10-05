@@ -1,10 +1,14 @@
-# Per-gameweek pipeline: ingest -> predict -> optimise -> notify.
+# Pipeline: ingest -> predict -> optimise -> notify.
 #
-# Cloud Scheduler starts this daily; it only does real work when the next gameweek deadline is
-# within DEADLINE_WINDOW_HOURS, so the daily trigger costs nothing most days. Every job is
-# idempotent, so re-running inside the window just refreshes the outputs.
+# Cloud Scheduler starts this every morning at 07:00 UK time.
+#   1. Run ingest. It saves the day's data and writes schedule.json, which says whether the next
+#      deadline is today and when to send (10:00, or 2.5 hours before an early deadline).
+#   2. Not a deadline day: refresh the predictions and stop.
+#   3. Deadline day: sleep until the run time, then run the whole pipeline again so the advice
+#      uses the latest injury news, ending with the Telegram message.
+# The timing rule lives in the backend (ingest/schedule.py, tested); this only reads the result.
 #
-# Manual run, skipping the deadline check:
+# Manual run, skipping the wait and the deadline check:
 #   gcloud workflows run fpl-pipeline --location=<region> --data='{"force": true}'
 
 main:
@@ -14,46 +18,49 @@ main:
         assign:
           - project: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
           - location: ${sys.get_env("GOOGLE_CLOUD_LOCATION")}
-          - window_hours: ${int(sys.get_env("DEADLINE_WINDOW_HOURS"))}
-          - force: ${default(map.get(args, "force"), false)}
-          - hours_until: -1
+          - bucket: ${sys.get_env("DATA_BUCKET")}
           - jobs: ${json.decode(sys.get_env("PIPELINE_JOBS"))}
+          - force: ${default(map.get(args, "force"), false)}
 
-    - skip_deadline_check:
-        switch:
-          - condition: ${force}
-            next: run_jobs
+    - ingest_first:
+        call: run_job
+        args:
+          name: fpl-ingest
+          project: ${project}
+          location: ${location}
 
-    - fetch_gameweeks:
+    - read_schedule:
         call: http.get
         args:
-          url: https://fantasy.premierleague.com/api/bootstrap-static/
-          headers:
-            User-Agent: fpl-optimiser-workflow/0.1
-          timeout: 60
-        result: bootstrap
+          url: ${"https://storage.googleapis.com/storage/v1/b/" + bucket + "/o/schedule.json?alt=media"}
+          auth:
+            type: OAuth2
+        result: stored
 
-    - find_next_deadline:
-        for:
-          value: event
-          in: ${bootstrap.body.events}
-          steps:
-            - is_next:
-                switch:
-                  - condition: ${default(map.get(event, "is_next"), false)}
-                    steps:
-                      - set_hours:
-                          assign:
-                            - hours_until: ${(time.parse(event.deadline_time) - sys.now()) / 3600}
-                      - stop_looking:
-                          next: break
+    - parse_schedule:
+        assign:
+          - schedule: ${if(get_type(stored.body) == "map", stored.body, json.decode(stored.body))}
 
     - decide:
         switch:
-          - condition: ${hours_until > 0 and hours_until <= window_hours}
-            next: run_jobs
-    - not_yet:
-        return: ${"skipped - hours until next deadline " + string(hours_until) + ", window is " + string(window_hours)}
+          - condition: ${force or schedule.deadline_day}
+            next: wait_until_run_time
+    - not_a_deadline_day:
+        call: run_job
+        args:
+          name: fpl-predict
+          project: ${project}
+          location: ${location}
+    - nothing_to_send:
+        return: ${"not a deadline day, so only refreshed the data and predictions"}
+
+    - wait_until_run_time:
+        assign:
+          - seconds_to_wait: ${if(force, 0, math.max(0, time.parse(schedule.run_at) - sys.now()))}
+    - sleep:
+        call: sys.sleep
+        args:
+          seconds: ${seconds_to_wait}
 
     - run_jobs:
         for:
@@ -61,10 +68,19 @@ main:
           in: ${jobs}
           steps:
             - run:
-                call: googleapis.run.v2.projects.locations.jobs.run
+                call: run_job
                 args:
-                  name: ${"projects/" + project + "/locations/" + location + "/jobs/" + job}
-                result: execution
+                  name: ${job}
+                  project: ${project}
+                  location: ${location}
 
     - finished:
-        return: ${"pipeline finished: " + string(len(jobs)) + " jobs"}
+        return: ${"sent gameweek " + string(schedule.gameweek) + " after waiting " + string(seconds_to_wait) + " seconds"}
+
+run_job:
+  params: [name, project, location]
+  steps:
+    - execute:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${"projects/" + project + "/locations/" + location + "/jobs/" + name}

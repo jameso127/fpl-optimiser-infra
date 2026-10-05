@@ -27,9 +27,9 @@ Say what a new resource costs before adding it.
 
 Outputs `github_actions_variables` provide `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`,
 `GCP_DEPLOYER_SA`, `ARTIFACT_REGISTRY_REPO`, `DATA_BUCKET`. Cloud Run jobs `fpl-ingest`,
-`fpl-train`, `fpl-predict`, `fpl-optimise`, `fpl-notify` and service `fpl-api` are created here
+`fpl-train`, `fpl-predict`, `fpl-optimise`, `fpl-notify` are created here
 with placeholder images; GitHub Actions in the backend repo replaces the image on deploy, so
-Terraform ignores image changes. Bucket layout: `season=<s>/gw=<n>/...`, `models/...`,
+Terraform ignores image changes. There is no API service yet. Bucket layout: `season=<s>/gw=<n>/...`, `models/...`,
 `monitoring/...`. If the backend needs a new job, bucket prefix needing IAM, secret or API,
 it is added here first.
 
