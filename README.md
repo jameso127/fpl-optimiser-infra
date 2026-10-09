@@ -1,21 +1,42 @@
 # FPL Optimiser: Infrastructure
 
-Terraform for all GCP infrastructure of the FPL optimiser. Application code is in
-`fpl-optimiser-backend`.
+**The Google Cloud setup behind the [FPL Optimiser](https://github.com/jameso127/fpl-optimiser),
+a bot that predicts Fantasy Premier League points and messages you the best transfers.**
 
-Designed to stay under **~£2/month**: everything is serverless and scales to zero, and a
-billing budget with alerts is part of the config.
+Everything is defined in Terraform and changed only through pull requests. It is built to cost
+**under £2 a month**: nothing runs unless it has work to do.
 
+## At a glance
+
+```mermaid
+flowchart LR
+    subgraph GCP[Google Cloud]
+        S1[Scheduler<br/>daily 10:00] --> WF[Workflow<br/>fpl-pipeline]
+        WF --> J[Cloud Run jobs<br/>ingest → predict → optimise → notify]
+        S2[Scheduler<br/>weekly] --> TR[Cloud Run job<br/>train]
+        J & TR --- B[(Cloud Storage<br/>data + models)]
+        J --- FS[(Firestore<br/>users)]
+        J --- SM[Secret Manager<br/>Telegram token]
+        AR[Artifact Registry<br/>images]
+    end
+    GH[GitHub Actions<br/>backend repo] -- keyless login --> AR
+    GH -- deploys new image --> J
+    J --> TG[Telegram]
 ```
-Cloud Scheduler --10:00 daily--> Cloud Workflows (fpl-pipeline)
-      fpl-ingest -> fpl-predict -> fpl-optimise -> fpl-notify (Telegram, deadline days only)
-Cloud Scheduler --weekly--> Cloud Run job: fpl-train   (train, evaluate, maybe promote a model)
 
-                 Cloud Storage bucket  (season=<s>/gw=<n>/, models/, monitoring/)
+- **Cheap by design.** Serverless only, so nothing is always on, plus an optional billing budget
+  that alerts at 50/90/100%. See [Cost](#cost).
+- **No keys anywhere.** GitHub logs in to Google with short-lived tokens (Workload Identity
+  Federation). There are no service account key files to leak.
+- **Least privilege.** Four service accounts, each allowed only what its job needs, mostly
+  granted on single resources rather than the whole project. See [Access](#access-at-a-glance).
+- **Reviewed changes.** Every change is a pull request with a Terraform plan posted for review.
+  Applying it after merge waits for a human to approve.
+- **Protects what can't be rebuilt.** The data bucket is versioned, and Terraform won't delete
+  it while it holds data, because it keeps FPL snapshots that can't be downloaded again later.
 
-GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
-        pushes images to Artifact Registry and updates the existing jobs
-```
+Application code (Python jobs, CI/CD that deploys them) lives in
+[fpl-optimiser](https://github.com/jameso127/fpl-optimiser).
 
 ## What it creates
 
@@ -40,7 +61,8 @@ GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
 
 ## Cost
 
-Rough monthly estimate for this usage (verify with the pricing calculator; prices change):
+Almost everything fits inside Google Cloud's free tiers. A rough monthly estimate (verify with
+the pricing calculator, since prices change):
 
 | Item | Why it is ~free |
 |---|---|
@@ -53,6 +75,10 @@ Rough monthly estimate for this usage (verify with the pricing calculator; price
 
 Expect well under £2. The budget alerts at 50%, 90% and 100% (and on forecast) if that changes.
 A budget alerts; it does not stop spending.
+
+---
+
+*The rest of this page is for running and operating it yourself.*
 
 ## Terraform in CI
 
