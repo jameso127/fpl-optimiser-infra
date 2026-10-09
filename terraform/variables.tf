@@ -63,7 +63,7 @@ variable "users_backend" {
 variable "pipeline_schedule" {
   description = "Cron for the daily pipeline start, in schedule_time_zone. Data refreshes daily; messages only go out on deadline days."
   type        = string
-  default     = "0 7 * * *"
+  default     = "0 10 * * *"
 }
 
 variable "train_schedule" {

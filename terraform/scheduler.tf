@@ -1,5 +1,5 @@
 # Two cheap triggers (Cloud Scheduler gives 3 jobs free per month):
-#   daily  -> the pipeline workflow, which decides from schedule.json whether today is a deadline day
+#   daily  -> the pipeline workflow, which runs every job; notify only sends on deadline days
 #   weekly -> the train job, which trains, evaluates and (if it passes the gate) promotes
 
 resource "google_cloud_scheduler_job" "pipeline" {

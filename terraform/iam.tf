@@ -47,13 +47,6 @@ resource "google_cloud_run_v2_job_iam_member" "workflow_runs_jobs" {
   member   = "serviceAccount:${google_service_account.workflow.email}"
 }
 
-# The workflow reads schedule.json from the data bucket (read-only).
-resource "google_storage_bucket_iam_member" "workflow_reads_schedule" {
-  bucket = google_storage_bucket.data.name
-  role   = "roles/storage.objectViewer"
-  member = "serviceAccount:${google_service_account.workflow.email}"
-}
-
 # Waiting for a job to finish polls a long-running operation; that is a project-level read.
 resource "google_project_iam_member" "workflow_views_run" {
   project = var.project_id
