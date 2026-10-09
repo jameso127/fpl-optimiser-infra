@@ -3,6 +3,9 @@
 **The Google Cloud setup behind the [FPL Optimiser](https://github.com/jameso127/fpl-optimiser),
 a bot that predicts Fantasy Premier League points and messages you the best transfers.**
 
+On each deadline day it sends a picture of your best team and the transfers to make
+([see what it sends](https://github.com/jameso127/fpl-optimiser#what-you-get)).
+
 Everything is defined in Terraform and changed only through pull requests. It is built to cost
 **under £2 a month**: nothing runs unless it has work to do.
 
