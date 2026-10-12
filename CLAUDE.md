@@ -1,9 +1,10 @@
 # FPL Optimiser: Infrastructure
 
-Terraform for ALL GCP infrastructure of the FPL optimiser demo: Cloud Run jobs and service,
+Terraform for ALL GCP infrastructure of the FPL optimiser demo: Cloud Run jobs,
 Cloud Workflows, Cloud Scheduler, Artifact Registry, the data bucket, IAM, Workload Identity
-Federation and Secret Manager. The application code lives in `fpl-optimiser-backend`
-(this repo's sibling); the React frontend in `fpl-optimiser-web`.
+Federation and Secret Manager. The application code lives in the backend repo
+(`jameso127/fpl-optimiser`, checked out as `../fpl-backend`); the React frontend
+(`fpl-optimiser-web`) is deferred.
 
 **Hard constraint: must stay cheap (target < £2/month).** Scale-to-zero only. Never add an
 always-on resource (no minimum instances, no VMs, no Cloud SQL, no load balancers, no NAT).
@@ -36,6 +37,14 @@ with placeholder images; GitHub Actions in the backend repo replaces the image o
 Terraform ignores image changes. There is no API service yet. Bucket layout: `season=<s>/gw=<n>/...`, `models/...`,
 `monitoring/...`. If the backend needs a new job, bucket prefix needing IAM, secret or API,
 it is added here first.
+
+The deployer only trusts `refs/heads/main` of the repo in the `BACKEND_REPOSITORY` Actions
+variable, which must be exactly `owner/name` (`jameso127/fpl-optimiser`), not a URL. GitHub
+variables are pasted by hand: watch for stray spaces.
+
+Schedules: the `fpl-pipeline` workflow runs daily at 10:00 UK and runs ingest, predict,
+optimise and notify in order, with no waiting or deadline logic; `fpl-notify` decides whether
+today is a deadline day. `fpl-train` has its own weekly schedule.
 
 ## Workflow
 

@@ -1,29 +1,52 @@
 # FPL Optimiser: Infrastructure
 
-Terraform for all GCP infrastructure of the FPL optimiser. Application code is in
-`fpl-optimiser-backend`.
+**The Google Cloud setup behind the [FPL Optimiser](https://github.com/jameso127/fpl-optimiser),
+a bot that predicts Fantasy Premier League points and messages you the best transfers.**
 
-Designed to stay under **~£2/month**: everything is serverless and scales to zero, and a
-billing budget with alerts is part of the config.
+On each deadline day it sends a picture of your best team and the transfers to make
+([see what it sends](https://github.com/jameso127/fpl-optimiser#what-you-get)).
 
+Everything is defined in Terraform and changed only through pull requests. It is built to cost
+**under £2 a month**: nothing runs unless it has work to do.
+
+## At a glance
+
+```mermaid
+flowchart LR
+    subgraph GCP[Google Cloud]
+        S1[Scheduler<br/>daily 10:00] --> WF[Workflow<br/>fpl-pipeline]
+        WF --> J[Cloud Run jobs<br/>ingest → predict → optimise → notify]
+        S2[Scheduler<br/>weekly] --> TR[Cloud Run job<br/>train]
+        J & TR --- B[(Cloud Storage<br/>data + models)]
+        J --- FS[(Firestore<br/>users)]
+        J --- SM[Secret Manager<br/>Telegram token]
+        AR[Artifact Registry<br/>images]
+    end
+    GH[GitHub Actions<br/>backend repo] -- keyless login --> AR
+    GH -- deploys new image --> J
+    J --> TG[Telegram]
 ```
-Cloud Scheduler --07:00 daily--> Cloud Workflows (fpl-pipeline)
-      ingest, then on a deadline day: wait until 10:00 (or 2.5h before), run
-      fpl-ingest -> fpl-predict -> fpl-optimise -> fpl-notify (Telegram)
-Cloud Scheduler --weekly--> Cloud Run job: fpl-train   (train, evaluate, maybe promote a model)
 
-                 Cloud Storage bucket  (season=<s>/gw=<n>/, models/, monitoring/, schedule.json)
+- **Cheap by design.** Serverless only, so nothing is always on, plus an optional billing budget
+  that alerts at 50/90/100%. See [Cost](#cost).
+- **No keys anywhere.** GitHub logs in to Google with short-lived tokens (Workload Identity
+  Federation). There are no service account key files to leak.
+- **Least privilege.** Four service accounts, each allowed only what its job needs, mostly
+  granted on single resources rather than the whole project. See [Access](#access-at-a-glance).
+- **Reviewed changes.** Every change is a pull request with a Terraform plan posted for review.
+  Applying it after merge waits for a human to approve.
+- **Protects what can't be rebuilt.** The data bucket is versioned, and Terraform won't delete
+  it while it holds data, because it keeps FPL snapshots that can't be downloaded again later.
 
-GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
-        pushes images to Artifact Registry and updates the existing jobs
-```
+Application code (Python jobs, CI/CD that deploys them) lives in
+[fpl-optimiser](https://github.com/jameso127/fpl-optimiser).
 
 ## What it creates
 
 | Area | Resources |
 |---|---|
 | Compute | Cloud Run jobs `fpl-ingest`, `fpl-train`, `fpl-predict`, `fpl-optimise`, `fpl-notify`. Created with a placeholder image; CI replaces it, and Terraform ignores image changes. |
-| Orchestration | Workflow `fpl-pipeline` (reads `schedule.json`, waits until send time on deadline days, runs the four jobs); Scheduler `fpl-pipeline-daily` and `fpl-train-weekly`. |
+| Orchestration | Workflow `fpl-pipeline` (runs the four jobs daily; `fpl-notify` only sends on deadline days); Scheduler `fpl-pipeline-daily` and `fpl-train-weekly`. |
 | Storage | Bucket `<project>-fpl-data` (versioned, 30-day cleanup of old versions, public access blocked); Artifact Registry repo `fpl` (keeps the newest 5 versions of each image). |
 | Identity | Service accounts `fpl-runtime`, `fpl-workflow`, `fpl-scheduler`, `fpl-deployer`; Workload Identity Federation pool for GitHub (no keys). |
 | Users | Firestore (Native mode, a named database, `fpl-users` by default) for the bot's users, with TTL policies that expire declared transfers and invites automatically. |
@@ -35,17 +58,18 @@ GitHub Actions (backend repo, main branch only) --OIDC/WIF--> fpl-deployer
 | Principal | Can |
 |---|---|
 | `fpl-runtime` (jobs) | read/write the data bucket; read its own secrets; read/write Firestore (`datastore.user`) |
-| `fpl-workflow` | run the pipeline jobs (`run.invoker` on each); read the bucket (`schedule.json`); view Cloud Run operations; write logs |
+| `fpl-workflow` | run the pipeline jobs (`run.invoker` on each); view Cloud Run operations; write logs |
 | `fpl-scheduler` | start workflow executions; run `fpl-train` |
 | `fpl-deployer` (GitHub) | push images; update the existing jobs; act as `fpl-runtime`. Only workflows in `github_repository` on `deploy_ref` (default `refs/heads/main`) can assume it. |
 
 ## Cost
 
-Rough monthly estimate for this usage (verify with the pricing calculator; prices change):
+Almost everything fits inside Google Cloud's free tiers. A rough monthly estimate (verify with
+the pricing calculator, since prices change):
 
 | Item | Why it is ~free |
 |---|---|
-| Cloud Run jobs | a few minutes a week, inside the monthly free vCPU/memory seconds |
+| Cloud Run jobs | the pipeline runs daily (not only on deadline days), still expected to fit inside the monthly free vCPU/memory seconds; check the bill and narrow it if not |
 | Workflows | a few dozen steps a day, inside the free steps |
 | Cloud Scheduler | 2 jobs; the first 3 are free |
 | Artifact Registry | cleanup policy keeps it near the free 0.5 GB |
@@ -54,6 +78,10 @@ Rough monthly estimate for this usage (verify with the pricing calculator; price
 
 Expect well under £2. The budget alerts at 50%, 90% and 100% (and on forecast) if that changes.
 A budget alerts; it does not stop spending.
+
+---
+
+*The rest of this page is for running and operating it yourself.*
 
 ## Terraform in CI
 
@@ -116,27 +144,24 @@ Cloud Run reads `latest`, so the next job run picks it up. Terraform never sees 
 Static validation (`terraform validate`) passes, but these only show up against a real project.
 After the first `apply`:
 
-1. **Workflow run**: `gcloud workflows run fpl-pipeline --location=<region> --data='{"force": true}'`.
-   Runs ingest, predict, optimise and notify for real, so it sends you a Telegram message. If it
-   fails with a permission error on the jobs, or on polling operations, the `fpl-workflow`
+1. **Workflow run**: `gcloud workflows run fpl-pipeline --location=<region>`.
+   Runs ingest, predict, optimise and notify for real; notify only sends a Telegram message on
+   a deadline day (otherwise its log says the deadline is not today). If it fails with a permission error on the jobs, or on polling operations, the `fpl-workflow`
    roles in `iam.tf` need adjusting (`run.invoker` per job is for `jobs.run`; `run.viewer` at
    project level is for the operation it waits on).
 2. **Scheduler to Cloud Run job**: `gcloud scheduler jobs run fpl-train-weekly --location=<region>`.
    The scheduler account has `run.invoker` on `fpl-train`; if the API returns 403 it needs
    `run.developer` there instead.
-3. **Schedule reading**: `--data='{}'` on a day that is not a deadline day should end with
-   "not a deadline day, so only refreshed the data and predictions". That also proves the
-   workflow can read `schedule.json`. If the step fails on the file's content type, adjust
-   `parse_schedule` in `workflows/pipeline.yaml`.
-4. **Waiting**: on a deadline day the execution stays "active" until the send time; that is the
-   workflow sleeping, not a hang.
+3. **Sending off a deadline day**: run the notify job with `FORCE_NOTIFY=true` to check the
+   Telegram path any day.
 
 ## Operating notes
 
-- The workflow starts daily at 07:00 UK (`pipeline_schedule`). It always refreshes the data and
-  predictions, and only sends on deadline days. If a deadline is early enough that the send
-  time is before 07:00, it sends immediately. `{"force": true}` skips the wait and the check.
-- Training runs weekly (`train_schedule`, Mondays 06:00). The train job promotes a model only
+- The workflow starts daily at 10:00 UK (`pipeline_schedule`) and runs every job. `fpl-notify`
+  checks the FPL schedule and only sends when the next deadline is today; a deadline before
+  10:00 is missed. Running daily costs a little more than deadline days only; narrow it if the
+  bill says so.
+- Training runs weekly (`train_schedule`, Tuesdays 06:00). The train job promotes a model only
   if it passes its gate; otherwise the serving model is unchanged.
 - The data bucket holds snapshots that cannot be recreated (FPL's pre-deadline `ep_next`), so
   versioning is on and `force_destroy` is off. Cloud Run `deletion_protection` is on by default.
