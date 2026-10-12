@@ -69,7 +69,7 @@ variable "pipeline_schedule" {
 variable "train_schedule" {
   description = "Cron for the weekly model training job."
   type        = string
-  default     = "0 6 * * 1"
+  default     = "0 6 * * 2"
 }
 
 variable "schedule_time_zone" {

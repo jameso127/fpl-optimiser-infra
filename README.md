@@ -161,7 +161,7 @@ After the first `apply`:
   checks the FPL schedule and only sends when the next deadline is today; a deadline before
   10:00 is missed. Running daily costs a little more than deadline days only; narrow it if the
   bill says so.
-- Training runs weekly (`train_schedule`, Mondays 06:00). The train job promotes a model only
+- Training runs weekly (`train_schedule`, Tuesdays 06:00). The train job promotes a model only
   if it passes its gate; otherwise the serving model is unchanged.
 - The data bucket holds snapshots that cannot be recreated (FPL's pre-deadline `ep_next`), so
   versioning is on and `force_destroy` is off. Cloud Run `deletion_protection` is on by default.
