@@ -4,9 +4,15 @@ variable "project_id" {
 }
 
 variable "region" {
-  description = "Region for Cloud Run, Artifact Registry, the bucket, Workflows and Scheduler."
+  description = "Region for the bucket, Firestore, Workflows and Scheduler."
   type        = string
   default     = "europe-west2"
+}
+
+variable "run_region" {
+  description = "Region for the Cloud Run jobs and their Artifact Registry repo. Not europe-west2: the FPL API answers 403 to Cloud Run jobs there and serves the same image from europe-west1."
+  type        = string
+  default     = "europe-west1"
 }
 
 variable "github_repository" {

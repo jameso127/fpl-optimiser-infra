@@ -5,8 +5,10 @@ resource "google_workflows_workflow" "pipeline" {
   service_account = google_service_account.workflow.email
   call_log_level  = "LOG_ERRORS_ONLY"
 
+  # The workflow runs in var.region; the jobs it starts are in var.run_region.
   user_env_vars = {
     PIPELINE_JOBS = jsonencode(local.pipeline_order)
+    JOBS_LOCATION = var.run_region
   }
 
   source_contents = file("${path.module}/workflows/pipeline.yaml")

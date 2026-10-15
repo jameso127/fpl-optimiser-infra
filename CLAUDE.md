@@ -42,6 +42,10 @@ The deployer only trusts `refs/heads/main` of the repo in the `BACKEND_REPOSITOR
 variable, which must be exactly `owner/name` (`jameso127/fpl-optimiser`), not a URL. GitHub
 variables are pasted by hand: watch for stray spaces.
 
+Regions: Cloud Run jobs and Artifact Registry are in `run_region` (europe-west1) because the FPL
+API refuses Cloud Run jobs in europe-west2; everything else is in `region` (europe-west2).
+`GCP_REGION` for the backend is `run_region`. Do not move the jobs back to europe-west2.
+
 Schedules: the `fpl-pipeline` workflow runs daily at 10:00 UK and runs ingest, predict,
 optimise and notify in order, with no waiting or deadline logic; `fpl-notify` decides whether
 today is a deadline day. `fpl-train` has its own weekly schedule.

@@ -4,10 +4,10 @@ output "github_actions_variables" {
   description = "Set these as GitHub Actions variables on the backend repo."
   value = {
     GCP_PROJECT_ID         = var.project_id
-    GCP_REGION             = var.region
+    GCP_REGION             = var.run_region # where the jobs and images live, for deploy.yml
     GCP_WIF_PROVIDER       = google_iam_workload_identity_pool_provider.github.name
     GCP_DEPLOYER_SA        = google_service_account.deployer.email
-    ARTIFACT_REGISTRY_REPO = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.images.repository_id}"
+    ARTIFACT_REGISTRY_REPO = "${var.run_region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.run_images.repository_id}"
     DATA_BUCKET            = google_storage_bucket.data.name
   }
 }
@@ -17,5 +17,5 @@ output "pipeline_workflow" {
 }
 
 output "jobs" {
-  value = sort(keys(google_cloud_run_v2_job.job))
+  value = sort(keys(google_cloud_run_v2_job.jobs))
 }

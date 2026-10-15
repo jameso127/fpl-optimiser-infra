@@ -124,8 +124,8 @@ so after the first deploy:
 uv run python -m ingest.history
 gcloud storage cp --recursive ./data/season=* gs://<data-bucket>/
 # 2. Run ingest for the current season, then train once
-gcloud run jobs execute fpl-ingest --region=<region> --wait
-gcloud run jobs execute fpl-train  --region=<region> --wait
+gcloud run jobs execute fpl-ingest --region=<run_region> --wait
+gcloud run jobs execute fpl-train  --region=<run_region> --wait
 ```
 Uploading data is not a deploy, so `CLAUDE.md`'s no-local-deploys rule does not apply, but it
 needs your credentials; do it yourself. After that, `fpl-train-weekly` keeps the model fresh.
@@ -165,6 +165,11 @@ After the first `apply`:
   if it passes its gate; otherwise the serving model is unchanged.
 - The data bucket holds snapshots that cannot be recreated (FPL's pre-deadline `ep_next`), so
   versioning is on and `force_destroy` is off. Cloud Run `deletion_protection` is on by default.
+- Two regions. The Cloud Run jobs and their Artifact Registry repo are in `run_region`
+  (europe-west1); the bucket, Firestore, the workflow and the schedulers are in `region`
+  (europe-west2). The FPL API answers 403 to Cloud Run jobs in europe-west2 but serves the
+  same image from europe-west1 (tested October 2026). Cross-region reads from the bucket are a
+  few MB a day. The workflow finds the jobs through its `JOBS_LOCATION` variable.
 - Expected points always come from the model. `fpl-predict` fails with a clear message until
   `fpl-train` has registered and promoted a model, so seed the data and train once (below).
 

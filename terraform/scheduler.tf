@@ -34,7 +34,7 @@ resource "google_cloud_scheduler_job" "train" {
 
   http_target {
     http_method = "POST"
-    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/fpl-train:run"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.run_region}/jobs/fpl-train:run"
     headers     = { "Content-Type" = "application/json" }
     body        = base64encode("{}")
 

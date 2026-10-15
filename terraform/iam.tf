@@ -41,8 +41,8 @@ resource "google_cloud_run_v2_job_iam_member" "workflow_runs_jobs" {
   for_each = local.jobs
 
   project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_job.job[each.key].name
+  location = var.run_region
+  name     = google_cloud_run_v2_job.jobs[each.key].name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.workflow.email}"
 }
@@ -69,8 +69,8 @@ resource "google_project_iam_member" "scheduler_starts_workflows" {
 
 resource "google_cloud_run_v2_job_iam_member" "scheduler_runs_train" {
   project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_job.job["fpl-train"].name
+  location = var.run_region
+  name     = google_cloud_run_v2_job.jobs["fpl-train"].name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.scheduler.email}"
 }
@@ -78,17 +78,17 @@ resource "google_cloud_run_v2_job_iam_member" "scheduler_runs_train" {
 # --- deployer: update the existing jobs/service and push images; nothing else -------------
 resource "google_artifact_registry_repository_iam_member" "deployer_pushes_images" {
   project    = var.project_id
-  location   = var.region
-  repository = google_artifact_registry_repository.images.repository_id
+  location   = var.run_region
+  repository = google_artifact_registry_repository.run_images.repository_id
   role       = "roles/artifactregistry.writer"
   member     = "serviceAccount:${google_service_account.deployer.email}"
 }
 
 resource "google_cloud_run_v2_job_iam_member" "deployer_updates_jobs" {
-  for_each = google_cloud_run_v2_job.job
+  for_each = google_cloud_run_v2_job.jobs
 
   project  = var.project_id
-  location = var.region
+  location = var.run_region
   name     = each.value.name
   role     = "roles/run.developer"
   member   = "serviceAccount:${google_service_account.deployer.email}"
