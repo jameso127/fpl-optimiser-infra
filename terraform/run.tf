@@ -5,6 +5,9 @@
 #
 # Jobs are created with a Google sample image. GitHub Actions replaces it with the real
 # image (tagged with the git SHA) on every deploy, so Terraform ignores image changes.
+#
+# Jobs run in var.run_region (europe-west1), not var.region: the FPL API answers 403 to Cloud
+# Run jobs in europe-west2, and serves the same image from europe-west1.
 
 locals {
   placeholder_job_image = "us-docker.pkg.dev/cloudrun/container/job:latest"
@@ -29,7 +32,7 @@ locals {
   common_env = merge(
     {
       GCP_PROJECT_ID     = var.project_id
-      GCP_REGION         = var.region
+      GCP_REGION         = var.run_region
       DATA_BUCKET        = google_storage_bucket.data.name
       LOG_LEVEL          = "INFO"
       USERS_BACKEND      = var.users_backend
@@ -38,11 +41,22 @@ locals {
   )
 }
 
-resource "google_cloud_run_v2_job" "job" {
+# The original jobs in europe-west2 (formerly google_cloud_run_v2_job.job) are released from
+# Terraform without being destroyed, so deletion protection never has to be turned off. They
+# sit idle (nothing calls them) and are deleted by hand once the europe-west1 jobs work.
+removed {
+  from = google_cloud_run_v2_job.job
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+resource "google_cloud_run_v2_job" "jobs" {
   for_each = local.jobs
 
   name                = each.key
-  location            = var.region
+  location            = var.run_region
   deletion_protection = var.deletion_protection
 
   template {
