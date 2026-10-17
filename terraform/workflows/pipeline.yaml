@@ -6,9 +6,12 @@
 #
 # Manual run:
 #   gcloud workflows run fpl-pipeline --location=<region>
-# To send on a day that is not a deadline day, run the notify job with FORCE_NOTIFY=true.
+# Test run: the same four jobs, but notify sends now, only to users marked `tester: true` in
+# Firestore, and records nothing, so the real deadline-day message still goes out:
+#   gcloud workflows run fpl-pipeline --location=<region> --data='{"test":true}'
 
 main:
+  params: [args]
   steps:
     - init:
         assign:
@@ -16,6 +19,14 @@ main:
           # The jobs' region (JOBS_LOCATION), which is not the workflow's own region.
           - location: ${sys.get_env("JOBS_LOCATION")}
           - jobs: ${json.decode(sys.get_env("PIPELINE_JOBS"))}
+          - test: false
+
+    # The scheduler passes {}; a manual run may pass nothing at all (args is then null).
+    - read_args:
+        switch:
+          - condition: ${args != null}
+            assign:
+              - test: ${default(map.get(args, "test"), false) == true}
 
     - run_jobs:
         for:
@@ -28,14 +39,34 @@ main:
                   name: ${job}
                   project: ${project}
                   location: ${location}
+                  test: ${test and job == "fpl-notify"}
 
     - finished:
-        return: "ran the pipeline; notify sends only on deadline days"
+        return: ${if(test, "test run; notify sent to testers only", "ran the pipeline; notify sends only on deadline days")}
 
 run_job:
-  params: [name, project, location]
+  params: [name, project, location, test]
   steps:
+    - pick:
+        switch:
+          - condition: ${test}
+            next: execute_test
+        next: execute
+
     - execute:
         call: googleapis.run.v2.projects.locations.jobs.run
         args:
           name: ${"projects/" + project + "/locations/" + location + "/jobs/" + name}
+        next: end
+
+    # Only fpl-notify is run this way; the workflow may override env on that job alone.
+    - execute_test:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${"projects/" + project + "/locations/" + location + "/jobs/" + name}
+          body:
+            overrides:
+              containerOverrides:
+                - env:
+                    - name: NOTIFY_TEST
+                      value: "true"

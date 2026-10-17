@@ -52,12 +52,13 @@ gcloud iam service-accounts add-iam-policy-binding $PLAN --project $PROJECT \
   --role roles/iam.workloadIdentityUser \
   --member "principalSet://iam.googleapis.com/$POOL/attribute.repository/$REPO"
 
-# Roles for apply. projectIamAdmin lets it grant itself any role. The billing budget needs a
-# role on the billing account instead, so leave billing_account_id unset in CI.
+# Roles for apply. projectIamAdmin lets it grant itself any role. iam.roleAdmin is for the one
+# custom role in iam.tf. The billing budget needs a role on the billing account instead, so
+# leave billing_account_id unset in CI.
 for role in viewer serviceusage.serviceUsageAdmin iam.serviceAccountAdmin iam.serviceAccountUser \
   iam.workloadIdentityPoolAdmin resourcemanager.projectIamAdmin storage.admin \
   artifactregistry.admin secretmanager.admin run.admin workflows.admin cloudscheduler.admin \
-  datastore.owner; do
+  datastore.owner iam.roleAdmin; do
   gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$APPLY \
     --role roles/$role --condition=None >/dev/null
 done

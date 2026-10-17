@@ -47,6 +47,24 @@ resource "google_cloud_run_v2_job_iam_member" "workflow_runs_jobs" {
   member   = "serviceAccount:${google_service_account.workflow.email}"
 }
 
+# A test run (`--data='{"test":true}'`) passes NOTIFY_TEST=true to fpl-notify as a run-time
+# override, which needs runWithOverrides. roles/run.developer has it but could also change the
+# job, so this role holds just the two permissions, granted on fpl-notify only.
+resource "google_project_iam_custom_role" "run_with_overrides" {
+  project     = var.project_id
+  role_id     = "fplRunJobWithOverrides"
+  title       = "Run a Cloud Run job with overrides"
+  permissions = ["run.jobs.run", "run.jobs.runWithOverrides"]
+}
+
+resource "google_cloud_run_v2_job_iam_member" "workflow_runs_notify_with_overrides" {
+  project  = var.project_id
+  location = var.run_region
+  name     = google_cloud_run_v2_job.jobs["fpl-notify"].name
+  role     = google_project_iam_custom_role.run_with_overrides.id
+  member   = "serviceAccount:${google_service_account.workflow.email}"
+}
+
 # Waiting for a job to finish polls a long-running operation; that is a project-level read.
 resource "google_project_iam_member" "workflow_views_run" {
   project = var.project_id
