@@ -152,8 +152,12 @@ After the first `apply`:
 2. **Scheduler to Cloud Run job**: `gcloud scheduler jobs run fpl-train-weekly --location=<region>`.
    The scheduler account has `run.invoker` on `fpl-train`; if the API returns 403 it needs
    `run.developer` there instead.
-3. **Sending off a deadline day**: run the notify job with `FORCE_NOTIFY=true` to check the
-   Telegram path any day.
+3. **Sending off a deadline day**: run a test pipeline, which sends now to users marked
+   `tester: true` in Firestore only, and records nothing (the real deadline-day message still
+   goes out):
+   `gcloud workflows run fpl-pipeline --location=<region> --data='{"test":true}'`.
+   The workflow account has a custom role on `fpl-notify` to pass `NOTIFY_TEST=true` as an
+   override. Running the notify job with `FORCE_NOTIFY=true` sends to every active user.
 
 ## Operating notes
 

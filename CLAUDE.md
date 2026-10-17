@@ -48,7 +48,8 @@ API refuses Cloud Run jobs in europe-west2; everything else is in `region` (euro
 
 Schedules: the `fpl-pipeline` workflow runs daily at 10:00 UK and runs ingest, predict,
 optimise and notify in order, with no waiting or deadline logic; `fpl-notify` decides whether
-today is a deadline day. `fpl-train` has its own weekly schedule.
+today is a deadline day. `fpl-train` has its own weekly schedule. A run with
+`--data='{"test":true}'` passes `NOTIFY_TEST=true` to `fpl-notify` (send now, testers only).
 
 ## Workflow
 

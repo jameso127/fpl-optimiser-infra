@@ -16,5 +16,6 @@ resource "google_workflows_workflow" "pipeline" {
   depends_on = [
     google_project_service.api,
     google_cloud_run_v2_job_iam_member.workflow_runs_jobs,
+    google_cloud_run_v2_job_iam_member.workflow_runs_notify_with_overrides,
   ]
 }
