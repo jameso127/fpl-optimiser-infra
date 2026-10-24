@@ -45,7 +45,7 @@ Application code (Python jobs, CI/CD that deploys them) lives in
 
 | Area | Resources |
 |---|---|
-| Compute | Cloud Run jobs `fpl-ingest`, `fpl-train`, `fpl-predict`, `fpl-optimise`, `fpl-notify`. Created with a placeholder image; CI replaces it, and Terraform ignores image changes. |
+| Compute | Cloud Run jobs `fpl-ingest`, `fpl-train`, `fpl-predict`, `fpl-optimise`, `fpl-notify`, and the Cloud Run service `fpl-bot` (the Telegram webhook: public, scale to zero, at most one instance). Created with a placeholder image; CI replaces it, and Terraform ignores image changes. |
 | Orchestration | Workflow `fpl-pipeline` (runs the four jobs daily; `fpl-notify` only sends on deadline days); Scheduler `fpl-pipeline-daily` and `fpl-train-weekly`. |
 | Storage | Bucket `<project>-fpl-data` (versioned, 30-day cleanup of old versions, public access blocked); Artifact Registry repo `fpl` (keeps the newest 5 versions of each image). |
 | Identity | Service accounts `fpl-runtime`, `fpl-workflow`, `fpl-scheduler`, `fpl-deployer`; Workload Identity Federation pool for GitHub (no keys). |
@@ -57,10 +57,11 @@ Application code (Python jobs, CI/CD that deploys them) lives in
 
 | Principal | Can |
 |---|---|
-| `fpl-runtime` (jobs) | read/write the data bucket; read its own secrets; read/write Firestore (`datastore.user`) |
+| `fpl-runtime` (jobs and `fpl-bot`) | read/write the data bucket; read its own secrets; read/write Firestore (`datastore.user`) |
 | `fpl-workflow` | run the pipeline jobs (`run.invoker` on each); view Cloud Run operations; write logs |
 | `fpl-scheduler` | start workflow executions; run `fpl-train` |
-| `fpl-deployer` (GitHub) | push images; update the existing jobs; act as `fpl-runtime`. Only workflows in `github_repository` on `deploy_ref` (default `refs/heads/main`) can assume it. |
+| `allUsers` | call `fpl-bot` (Telegram cannot sign in to Google; the bot rejects requests without Telegram's secret header) |
+| `fpl-deployer` (GitHub) | push images; update the existing jobs and `fpl-bot`; act as `fpl-runtime`. Only workflows in `github_repository` on `deploy_ref` (default `refs/heads/main`) can assume it. |
 
 ## Cost
 
@@ -70,6 +71,7 @@ the pricing calculator, since prices change):
 | Item | Why it is ~free |
 |---|---|
 | Cloud Run jobs | the pipeline runs daily (not only on deadline days), still expected to fit inside the monthly free vCPU/memory seconds; check the bill and narrow it if not |
+| Cloud Run service `fpl-bot` | scales to zero and bills only while answering a message; at most one instance caps a flood of requests |
 | Workflows | a few dozen steps a day, inside the free steps |
 | Cloud Scheduler | 2 jobs; the first 3 are free |
 | Artifact Registry | cleanup policy keeps it near the free 0.5 GB |
@@ -204,13 +206,13 @@ id, and these fields:
 | `fpl_team_id` | number | your FPL team id |
 | `active` | boolean | `true` |
 
-The jobs pick it up on the next run. The bot's `/start` will replace this step. To pause
+The jobs pick it up on the next run. Once the backend's bot is deployed, messaging the bot
+`/start` does this instead. To pause
 yourself, set `active` to `false`.
 
 ## Not here yet
 
-- An API service (Cloud Run, scale to zero) and the Telegram bot webhook: both are planned and
-  both are small additions here.
+- An API service (Cloud Run, scale to zero): planned, and a small addition here.
 - BigQuery: planned as external tables over the Parquet files (no duplicated storage, inside
   the free tier). Add when wanted; it needs the BigQuery API and a dataset.
 - The backend's `ci.yml` / `deploy.yml` live in the backend repo.
