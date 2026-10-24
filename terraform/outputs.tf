@@ -19,3 +19,8 @@ output "pipeline_workflow" {
 output "jobs" {
   value = sort(keys(google_cloud_run_v2_job.jobs))
 }
+
+# The bot's webhook is registered with Telegram at this URL (see the backend README).
+output "bot_url" {
+  value = google_cloud_run_v2_service.bot.uri
+}
